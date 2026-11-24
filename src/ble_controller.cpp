@@ -68,11 +68,11 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
         servo2_setAngle(target);
         bleSendLog("Servo 2 (Pin 21): " + String(target) + " deg\n");
     }
-    // Phim 4: KICH HOAT SERVO 3 (GPIO 47)
+    // Phim 4: KICH HOAT SERVO 3 (GPIO 2)
     if (button == '4' && pressed) {
         int target = (servo3_getAngle() <= 90) ? 180 : 0;
         servo3_setAngle(target);
-        bleSendLog("Servo 3 (Pin 47): " + String(target) + " deg\n");
+        bleSendLog("Servo 3 (Pin " + String(PIN_SERVO_3) + "): " + String(target) + " deg\n");
     }
 
     // 3. Phim mui ten D-Pad: 5=UP, 6=DOWN, 7=LEFT, 8=RIGHT
@@ -192,7 +192,7 @@ static void handleUartText(const String& text) {
     if (c == '4' && cmd.length() == 1) {
         int target = (servo3_getAngle() <= 90) ? 180 : 0;
         servo3_setAngle(target);
-        bleSendLog("Servo 3 (Pin 47): " + String(target) + " deg\n");
+        bleSendLog("Servo 3 (Pin " + String(PIN_SERVO_3) + "): " + String(target) + " deg\n");
         return;
     }
 
@@ -260,7 +260,7 @@ static void handleUartText(const String& text) {
         int spaceIdx = cmd.indexOf(' ');
         int val = cmd.substring(spaceIdx + 1).toInt();
         servo3_setAngle(val);
-        bleSendLog("Servo 3 (Pin 47) Angle: " + String(val) + " deg\n");
+        bleSendLog("Servo 3 (Pin " + String(PIN_SERVO_3) + ") Angle: " + String(val) + " deg\n");
         return;
     }
 }

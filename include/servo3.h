@@ -9,8 +9,11 @@
  */
 
 void servo3_init();
+void servo3_setMicroseconds(int us);
 void servo3_setAngle(int angle);
+void servo3_setPercent(int percent);
 int  servo3_getAngle();
-void servo3_update(); // Goi trong loop() de chay animation/state machine sau nay
+int  servo3_getMicroseconds();
+void servo3_update();
 
 #endif // SERVO3_H

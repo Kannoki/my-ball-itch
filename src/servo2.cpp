@@ -7,7 +7,7 @@ static int currentMicroseconds2 = 1500;           // Xung neutral 1500us
 static unsigned long lastUpdate2 = 0;
 
 void servo2_init() {
-    ESP32PWM::allocateTimer(3);
+    ESP32PWM::allocateTimer(2);
     myServo2.setPeriodHertz(50); // 50 Hz chuan frame 20ms
     // Cau hinh dai xung full theo datasheet TD-8120MG: 500us den 2500us
     myServo2.attach(PIN_SERVO_2, SERVO2_MIN_PULSE_US, SERVO2_MAX_PULSE_US);

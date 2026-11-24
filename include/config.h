@@ -140,6 +140,11 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 #define SERVO2_MAX_PULSE_US   2500
 #define SERVO2_MAX_ANGLE      180
 
+// Thong so cho Servo 3 (GPIO 47)
+#define SERVO3_MIN_PULSE_US   500
+#define SERVO3_MAX_PULSE_US   2500
+#define SERVO3_MAX_ANGLE      180
+
 // ==============================================================================
 // 4. CAU HINH BLUETOOTH LOW ENERGY (BLUEFRUIT BLE)
 // ==============================================================================

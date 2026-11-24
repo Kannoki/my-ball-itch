@@ -22,10 +22,10 @@ Dự án **my-ball-itch** dùng **PlatformIO** cho vi điều khiển **ESP32-S3
   - Kết nối app Bluetooth và bấm **Nút 1** trên Control Pad thì xe mới bắt đầu xuất phát dò viền. Bấm lại nút 1 bất kỳ lúc nào để phanh dừng khẩn cấp.
 - **3 động cơ servo điều khiển độc lập**
   - **Servo 1 (GPIO 14):** Tối ưu chuẩn Datasheet dòng servo kỹ thuật số tải nặng **TD-8120MG (20kg.cm)**:
-    + Dải độ rộng xung cực đại: **`500µs - 2500µs`** (Neutral `1500µs`).
-    + Góc quay mở rộng: **`0° - 270°`** (đẩy kịch 100% cơ cấu hành trình, không còn bị khựng ở 180° hay 66% hành trình).
-    + Hỗ trợ đặt xung trực tiếp (`servo1_setMicroseconds`), đặt góc (`servo1_setAngle`) và đặt phần trăm hành trình (`servo1_setPercent`).
-    + Điều khiển bật/tắt hành trình trực tiếp qua **Nút 2** trên Controller Pad hoặc gõ lệnh qua UART.
+    - Dải độ rộng xung cực đại: **`500µs - 2500µs`** (Neutral `1500µs`).
+    - Góc quay mở rộng: **`0° - 270°`** (đẩy kịch 100% cơ cấu hành trình, không còn bị khựng ở 180° hay 66% hành trình).
+    - Hỗ trợ đặt xung trực tiếp (`servo1_setMicroseconds`), đặt góc (`servo1_setAngle`) và đặt phần trăm hành trình (`servo1_setPercent`).
+    - Điều khiển bật/tắt hành trình trực tiếp qua **Nút 2** trên Controller Pad hoặc gõ lệnh qua UART.
   - **Servo 2 (GPIO 21):** Header & file độc lập `servo2.cpp` (Nút 3).
   - **Servo 3 (GPIO 47):** Header & file độc lập `servo3.cpp` (Nút 4).
 - **Truyền trạng thái 8 mắt cảm biến trực tiếp về giao diện App BLE:**
@@ -45,7 +45,7 @@ Dự án **my-ball-itch** dùng **PlatformIO** cho vi điều khiển **ESP32-S3
 
 ```mermaid
 flowchart LR
-    pin["Pin 2S · 7,4 V danh định"]
+    pin["Pin đo ra 7,4 V danh định"]
     pin -->|"Cực (+) → dây đỏ"| servo1["Servo 1 · TD-8120MG"]
     pin -->|"Cực (+) → cọc 12V"| l298["L298N"]
     pin -->|"Cực (+) → IN+"| buck["LM2596 · chỉnh OUT+ về 5,0 V"]
@@ -144,9 +144,11 @@ pio device monitor -b 115200
 2. Mở Bluetooth điện thoại, quét và bấm Connect vào thiết bị **xe dò line** (luôn bật sẵn, không cần mã PIN).
 3. **Tab UART / Terminal (Theo dõi & Cân chỉnh Cảm biến trực tiếp):**
    - Màn hình sẽ tự động cập nhật liên tục mỗi 300ms trạng thái 8 mắt:
+
      ```
      R:11000011 [..####..] E:+0.0
      ```
+
      - `R:11000011`: Mức logic điện áp thực tế đọc từ 8 chân GPIO (S1..S8).
      - `[..####..]`: Trạng thái giải mã trực quan (`#` = Vạch đen, `.` = Nền trắng).
      - `E:+0.0`: Vị trí mép viền gần tâm trong mẫu hiển thị (-3.0 đến +3.0). Các mẫu khác có thể báo `ALL_WHITE`, `ALL_BLACK`, `CROSS` hoặc `NO_EDGE`.
