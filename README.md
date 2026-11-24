@@ -1,6 +1,6 @@
 # ESP32-S3 Robot Line Tracker + L298N (4 Motors) + 3 Servos + Bluefruit BLE
 
-Dự án firmware hoàn chỉnh trên nền tảng **PlatformIO** cho vi điều khiển **ESP32-S3 WROOM-1 (DevKitC-1)**.
+Dự án **my-ball-itch** dùng **PlatformIO** cho vi điều khiển **ESP32-S3 WROOM-1 (DevKitC-1)**.
 
 ## 📌 Tính Năng Nổi Bật
 
@@ -170,5 +170,3 @@ pio device monitor -b 115200
 - Kê bánh lên khỏi sàn và thử nhấn mũi tên lên trong Standby. Nếu bánh vẫn đứng và động cơ chỉ kêu, thả nút rồi kiểm tra bánh hoặc hộp số bị kẹt, điện áp tại cọc cấp nguồn L298N lúc đề-pa và chiều quay của hai bánh trên mỗi bên.
 - Mắt đọc cách sàn **1 mm (0,1 cm)**. Kiểm tra thanh cảm biến không cạ sàn, rồi đặt mép vạch giữa S4 và S5. Dùng `V` để chọn đúng phía màu đen và `I` nếu trạng thái `#` và `.` trong app bị đảo. Khi mất viền, xe tìm lại tối đa 750 ms rồi dừng. Xe tiếp tục khi cảm biến thấy lại mép hợp lệ.
 - Kiểm tra hướng rẽ bằng hai nút **←** và **→** trong Standby. Khi đưa vạch đen vào hai mắt ngoài cùng bên trái, dãy cảm biến trong UART sẽ hiện `[##......]`. Nếu chỉ còn thấy mép ngược với chế độ bám viền đã chọn, xe tìm về phía còn thấy màu đen.
-#   m y - b a l l - i t c h  
- 
