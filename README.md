@@ -61,6 +61,8 @@ Nối **cực âm pin**, `IN−/OUT−` của LM2596, GND của ESP32-S3, L298N,
 
 ### Chân tín hiệu ESP32-S3
 
+![Sơ đồ nối dây tín hiệu giữa ESP32-S3, L298N, ba servo và thanh cảm biến tám mắt. Cặp OUT3/OUT4 dẫn đến hai động cơ trái, cặp OUT1/OUT2 dẫn đến hai động cơ phải.](docs/wiring-signals.svg)
+
 | Bộ phận | Chân thiết bị | GPIO tương ứng theo thứ tự |
 | :--- | :--- | :--- |
 | L298N — động cơ phải | `ENA`, `IN1`, `IN2` | `8`, `9`, `10` |

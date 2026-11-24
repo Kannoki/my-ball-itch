@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="634" viewBox="0 0 1040 634" role="img" aria-labelledby="title description">
+  <title id="title">Sơ đồ nối dây tín hiệu ESP32-S3</title>
+  <desc id="description">Sơ đồ chân tín hiệu L298N, ba servo và thanh cảm biến tám mắt. Mỗi nhóm chân nối theo thứ tự từ trái sang phải. Mũi tên thể hiện hướng tín hiệu.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#587087" stroke-width="1.6"/>
+    </marker>
+    <style>
+      text { font-family: 'Segoe UI', 'DejaVu Sans', sans-serif; fill: #152c43; }
+      .heading { font-size: 35px; font-weight: 700; }
+      .subtitle { font-size: 18px; fill: #42586d; }
+      .group-name { font-size: 18px; font-weight: 700; }
+      .pin { font-size: 20px; font-weight: 600; }
+      .detail { font-size: 17px; fill: #42586d; }
+      .wire { fill: none; stroke: #587087; stroke-width: 2; marker-end: url(#arrow); }
+      .separator { stroke: #d4dfe8; }
+    </style>
+  </defs>
+
+  <rect width="1040" height="634" rx="18" fill="#fff"/>
+  <text x="44" y="55" class="heading">Sơ đồ nối dây tín hiệu</text>
+  <text x="44" y="86" class="subtitle">ESP32-S3 DevKitC-1 · Các chân trong một nhóm nối theo thứ tự hiển thị</text>
+
+  <rect x="26" y="112" width="988" height="152" rx="12" fill="#eaf7f3"/>
+  <rect x="26" y="130" width="4" height="116" rx="2" fill="#147664"/>
+  <text x="48" y="146" class="group-name">GPIO ESP32-S3</text>
+  <text x="366" y="146" class="group-name">Đầu vào L298N</text>
+  <text x="668" y="146" class="group-name">Đầu ra L298N → động cơ</text>
+
+  <path class="separator" d="M 48 217 H 988"/>
+  <text x="48" y="193" class="pin">GPIO 8 / 9 / 10</text>
+  <path class="wire" d="M 254 186 H 344"/>
+  <text x="366" y="193" class="pin">ENA / IN1 / IN2</text>
+  <path class="wire" d="M 556 186 H 646"/>
+  <text x="668" y="193" class="pin">OUT1/OUT2</text>
+  <text x="812" y="193" class="detail">2 động cơ phải</text>
+
+  <text x="48" y="243" class="pin">GPIO 13 / 11 / 12</text>
+  <path class="wire" d="M 254 236 H 344"/>
+  <text x="366" y="243" class="pin">ENB / IN3 / IN4</text>
+  <path class="wire" d="M 556 236 H 646"/>
+  <text x="668" y="243" class="pin">OUT3/OUT4</text>
+  <text x="812" y="243" class="detail">2 động cơ trái</text>
+
+  <rect x="26" y="276" width="988" height="158" rx="12" fill="#f3eef9"/>
+  <rect x="26" y="294" width="4" height="122" rx="2" fill="#7444a4"/>
+  <text x="48" y="307" class="group-name">GPIO ESP32-S3</text>
+  <text x="366" y="307" class="group-name">Servo · dây tín hiệu cam/vàng</text>
+
+  <path class="separator" d="M 48 352 H 988 M 48 393 H 988"/>
+  <text x="48" y="341" class="pin">GPIO 14</text>
+  <path class="wire" d="M 254 334 H 344"/>
+  <text x="366" y="341" class="pin">Servo 1 · TD-8120MG</text>
+
+  <text x="48" y="381" class="pin">GPIO 21</text>
+  <path class="wire" d="M 254 374 H 344"/>
+  <text x="366" y="381" class="pin">Servo 2</text>
+
+  <text x="48" y="421" class="pin">GPIO 47</text>
+  <path class="wire" d="M 254 414 H 344"/>
+  <text x="366" y="421" class="pin">Servo 3</text>
+
+  <rect x="26" y="446" width="988" height="165" rx="12" fill="#ecf3fc"/>
+  <rect x="26" y="464" width="4" height="129" rx="2" fill="#2863a8"/>
+  <text x="48" y="478" class="group-name">GPIO ESP32-S3</text>
+  <text x="366" y="478" class="group-name">Thanh cảm biến 8 mắt</text>
+
+  <path class="separator" d="M 48 527 H 988 M 48 568 H 988"/>
+  <text x="48" y="516" class="pin">GPIO 4 / 5 / 6 / 7</text>
+  <path class="wire" d="M 344 509 H 254"/>
+  <text x="366" y="516" class="pin">D1 / D2 / D3 / D4</text>
+  <text x="668" y="516" class="detail">Bốn mắt bên trái</text>
+
+  <text x="48" y="557" class="pin">GPIO 15 / 16 / 17 / 18</text>
+  <path class="wire" d="M 344 550 H 254"/>
+  <text x="366" y="557" class="pin">D5 / D6 / D7 / D8</text>
+  <text x="668" y="557" class="detail">Bốn mắt bên phải</text>
+
+  <text x="48" y="597" class="pin">GPIO 1</text>
+  <path class="wire" d="M 254 590 H 344"/>
+  <text x="366" y="597" class="pin">IR/1R</text>
+  <text x="668" y="597" class="detail">Nếu module có chân enable</text>
+</svg>
