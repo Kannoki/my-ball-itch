@@ -1,176 +1,106 @@
-# ESP32-S3 Robot Line Tracker + L298N (4 Motors) + 3 Servos + Bluefruit BLE
+# wdf-line-tracker
 
-Dự án **my-ball-itch** dùng **PlatformIO** cho vi điều khiển **ESP32-S3 WROOM-1 (DevKitC-1)**.
-
-## 📌 Tính Năng Nổi Bật
-
-- **Điều khiển 4 động cơ qua mạch cầu H L298N (Đúng sơ đồ thực tế):**
-  - 2 động cơ bên **TRÁI** đấu song song vào cọc `OUT3 & OUT4` (điều khiển bởi ENB, IN3, IN4).
-  - 2 động cơ bên **PHẢI** đấu song song vào cọc `OUT1 & OUT2` (điều khiển bởi ENA, IN1, IN2).
-  - Nếu hai bên xe đã đấu vào hai kênh ngược với sơ đồ trên, đặt `SWAP_LEFT_RIGHT_MOTORS` thành `true` trong `include/config.h`.
-  - Điều khiển tốc độ mượt mà bằng xung PWM tần số 10kHz (sử dụng ngoại vi phần cứng LEDC của ESP32-S3).
-- **Cấp nguồn từ pin 2S 7,4 V**
-  - Pin cấp trực tiếp cho **Servo 1 TD-8120MG** và cọc nguồn động lực của **L298N**. Cọc 5 V của L298N để trống.
-  - Mạch **LM2596** hạ xuống **5,0 V** để cấp cho ESP32-S3, Servo 2, Servo 3 và cảm biến dò line 8 mắt.
-  - Tất cả các nhánh nối chung GND. Xem giới hạn điện áp của Servo 1 ở phần [đấu nối servo](docs/wiring.md#33-đấu-nối-3-động-cơ-servo).
-- **Tự động bám VIỀN ranh giới Đen - Trắng (Edge Tracking):**
-  - Không phải chạy đè lên giữa vạch đen, robot bám chính xác vào **đường viền chuyển tiếp giữa mặt sàn Trắng và vùng Đen**.
-  - Nhận diện vị trí ranh giới chuyển đổi (0 -> 1 hoặc 1 -> 0) với độ nhạy cao.
-  - Tự động nhận diện khi xe bị văng hẳn vào vùng toàn Trắng hoặc toàn Đen để tự lượn quay trở lại mép viền.
-- **An toàn khi khởi động (Nút 1 bắt đầu):**
-  - Khi bật nguồn xe, 4 động cơ **HOÀN TOÀN DỪNG YÊN** ở chế độ chờ (Standby).
-  - Kết nối app Bluetooth và bấm **Nút 1** trên Control Pad thì xe mới bắt đầu xuất phát dò viền. Bấm lại nút 1 bất kỳ lúc nào để phanh dừng khẩn cấp.
-- **3 động cơ servo điều khiển độc lập**
-  - **Servo 1 (GPIO 14):** Tối ưu chuẩn Datasheet dòng servo kỹ thuật số tải nặng **TD-8120MG (20kg.cm)**:
-    - Dải độ rộng xung cực đại: **`500µs - 2500µs`** (Neutral `1500µs`).
-    - Góc quay mở rộng: **`0° - 270°`** (đẩy kịch 100% cơ cấu hành trình, không còn bị khựng ở 180° hay 66% hành trình).
-    - Hỗ trợ đặt xung trực tiếp (`servo1_setMicroseconds`), đặt góc (`servo1_setAngle`) và đặt phần trăm hành trình (`servo1_setPercent`).
-    - Điều khiển bật/tắt hành trình trực tiếp qua **Nút 2** trên Controller Pad hoặc gõ lệnh qua UART.
-  - **Servo 2 (GPIO 21):** Header & file độc lập `servo2.cpp` (Nút 3).
-  - **Servo 3 (GPIO 47):** Header & file độc lập `servo3.cpp` (Nút 4).
-- **Truyền trạng thái 8 mắt cảm biến trực tiếp về giao diện App BLE:**
-  - Tab **UART / Terminal** trên app Adafruit Bluefruit LE Connect hiển thị liên tục trạng thái thời gian thực của 8 mắt: `R:11000011 [..####..] E:+0.0`.
-  - Giúp quan sát ngay lập tức phản xạ của từng mắt đọc khi di chuyển xe qua vạch đen và nền trắng mà không cần cắm cáp USB vào máy tính.
-  - Hỗ trợ đổi mức logic Đen=HIGH / Đen=LOW tức thì (gõ `I`) và bật/tắt trở kéo `INPUT_PULLUP` (gõ `P`).
-- **Điều khiển không dây qua Bluetooth Low Energy (Adafruit Bluefruit LE Connect):**
-  - Tương thích 100% với app **Adafruit Bluefruit LE Connect** trên iOS & Android.
-  - Hỗ trợ chuyển đổi linh hoạt 2 chế độ: Tự động dò line (`LINE TRACKING`) hoặc Điều khiển từ xa bằng điện thoại (`MANUAL BLE`).
-  - Hỗ trợ bàn phím Control Pad (D-Pad tiến, lùi, rẽ, dừng khi thả nút) và gửi lệnh qua UART Terminal.
-- **Tài liệu đấu nối chi tiết:**
-  - Xem tài liệu đầy đủ tại [docs/wiring.md](docs/wiring.md).
+Firmware robot dò line dùng **PlatformIO** (Arduino framework) hỗ trợ **ESP32 38-pin** và **ESP32-S3**, điều khiển 4 động cơ qua **L298N**, 3 servo độc lập bằng **LEDC phần cứng** và giao tiếp không dây qua **Bluetooth Low Energy (Adafruit Bluefruit LE Connect)**.
 
 ---
 
-## Sơ đồ đấu nối
+## ⚙️ Các Build Environment (Combo Phần Cứng)
 
-```mermaid
-flowchart LR
-    pin["Pin đo ra 7,4 V danh định"]
-    pin -->|"Cực (+) → dây đỏ"| servo1["Servo 1 · TD-8120MG"]
-    pin -->|"Cực (+) → cọc 12V"| l298["L298N"]
-    pin -->|"Cực (+) → IN+"| buck["LM2596 · chỉnh OUT+ về 5,0 V"]
-    pin ---|"Cực (−)"| gnd["GND chung"]
-    l298 -->|"OUT3/OUT4"| leftMotors["Hai động cơ trái mắc song song"]
-    l298 -->|"OUT1/OUT2"| rightMotors["Hai động cơ phải mắc song song"]
-    buck -->|"OUT+ → 5V/VIN"| esp["ESP32-S3 DevKitC-1"]
-    buck -->|"OUT+ → dây đỏ"| servos["Servo 2 và Servo 3"]
-    buck -->|"OUT+ → VCC"| sensor["Cảm biến 8 mắt · nếu module hỗ trợ 5 V"]
-```
+| Environment | Board | Cảm biến | Tài liệu đấu dây |
+| :--- | :--- | :--- | :--- |
+| **`esp32-ir`** *(mặc định)* | ESP32 38-pin (`esp32dev`) | IR 8 mắt (`HY-S301` / `TCRT5000`) | [docs/wiring-esp32-ir.md](docs/wiring-esp32-ir.md) |
+| **`s3-ir`** | ESP32-S3 DevKitC-1 | IR 8 mắt (`HY-S301` / `TCRT5000`) | [docs/wiring-s3-ir.md](docs/wiring-s3-ir.md) |
+| **`esp32-photores`** | ESP32 38-pin (`esp32dev`) | Quang trở (LDR) 8 mắt | [docs/wiring-esp32-photores.md](docs/wiring-esp32-photores.md) |
+| **`esp32-tcrt5000-2d41`** | ESP32 38-pin (`esp32dev`) | TCRT5000 `2D4.1` (5 mắt, 7 chân) | [docs/wiring-esp32-tcrt5000-2d41.md](docs/wiring-esp32-tcrt5000-2d41.md) |
 
-Nối **cực âm pin**, `IN−/OUT−` của LM2596, GND của ESP32-S3, L298N, cảm biến và dây nâu/đen của cả ba servo về **GND chung**. Để trống cọc `5V` trên L298N và tháo hai jumper `ENA/ENB` để nhận PWM từ ESP32-S3. Kiểm tra Servo 1 chịu được điện áp pin khi sạc đầy trước khi đấu trực tiếp. [Chi tiết nguồn và jumper](docs/wiring.md)
+Xem hướng dẫn nguồn điện (Pin 2S 7.4V + mạch hạ áp LM2596 5.0V) và tổng quan hệ thống tại [docs/wiring.md](docs/wiring.md).
 
-### Chân tín hiệu ESP32-S3
+---
 
-![Sơ đồ nối dây tín hiệu giữa ESP32-S3, L298N, ba servo và thanh cảm biến tám mắt. Cặp OUT3/OUT4 dẫn đến hai động cơ trái, cặp OUT1/OUT2 dẫn đến hai động cơ phải.](docs/wiring-signals.svg)
+## 📌 Tính Năng Chính
 
-| Bộ phận | Chân thiết bị | GPIO tương ứng theo thứ tự |
-| :--- | :--- | :--- |
-| L298N — động cơ phải | `ENA`, `IN1`, `IN2` | `8`, `9`, `10` |
-| L298N — động cơ trái | `ENB`, `IN3`, `IN4` | `13`, `11`, `12` |
-| Servo 1, Servo 2, Servo 3 | Dây tín hiệu của từng servo | `14`, `21`, `47` |
-| Cảm biến — bốn mắt bên trái | `D1`, `D2`, `D3`, `D4` | `4`, `5`, `6`, `7` |
-| Cảm biến — bốn mắt bên phải | `D5`, `D6`, `D7`, `D8` | `15`, `16`, `17`, `18` |
-| Cảm biến — bật đèn hồng ngoại | `IR/1R`, nếu module có ngõ enable tương thích | `1` |
-
-Nhìn theo hướng xe chạy, **D1/S1 ở ngoài cùng bên trái** và **D8/S8 ở ngoài cùng bên phải**. Kiểm tra tín hiệu `D1–D8` tương thích mức logic **3,3 V** trước khi nối vào GPIO. [Datasheet ESP32-S3](https://documentation.espressif.com/esp32-s3_datasheet_en.pdf)
+- **Điều khiển 4 động cơ L298N (`PWM 10 kHz`):**
+  - 2 động cơ **TRÁI** đấu song song vào `OUT3 & OUT4`, 2 động cơ **PHẢI** đấu song song vào `OUT1 & OUT2` (có thể đảo bên bằng `SWAP_LEFT_RIGHT_MOTORS` và đảo chiều từng bên bằng `INVERT_LEFT_MOTORS` / `INVERT_RIGHT_MOTORS` trong `include/config.h`).
+  - Có nhịp đề-pa `245/255` trong `120 ms` khi khởi hành, tự giảm/dừng bánh trong khi ôm cua gắt.
+- **3 Servo điều khiển độc lập qua LEDC phần cứng (`50 Hz`, 14-bit):**
+  - Tách riêng timer & kênh LEDC (`ch 2, 4, 6`, tránh xung đột timer `0` của động cơ).
+  - **Servo 1 (`TD-8120MG`):** dải xung `500–2500 µs`, góc quay `0°–270°`.
+  - **Servo 2 & Servo 3:** dải xung `500–2500 µs`, góc quay `0°–180°`.
+- **Dò line linh hoạt (`5` hoặc `8` mắt):**
+  - Hỗ trợ **Bám viền Đen–Trắng** (`TRANG TRAI - DEN PHAI`, `DEN TRAI - TRANG PHAI`, `AUTO`) và **Bám giữa vạch** (`BAM GIUA VACH` — mặc định cho `esp32-tcrt5000-2d41`).
+  - Bộ lọc đa số 2/3 mẫu, tự xoay tìm lại line theo hướng lệch cuối (tối đa `750 ms` rồi dừng an toàn).
+- **An toàn & điều khiển qua BLE (Adafruit Bluefruit LE Connect):**
+  - Khởi động luôn ở chế độ **Standby** (dừng toàn bộ động cơ), chỉ chạy tự động khi bấm **Nút `1`**.
+  - Truyền trạng thái cảm biến theo thời gian thực không chặn vòng lặp PID (`non-blocking TX queue` mỗi `300 ms`).
 
 ---
 
 ## 📂 Cấu Trúc Dự Án
 
-```
-ball_itch/
+```text
+wdf-line-tracker/
 ├── docs/
-│   └── wiring.md             # Hướng dẫn đấu nối phần cứng, nguồn điện và cấu hình app
+│   ├── wiring.md                      # Tổng quan nguồn điện, L298N, Servo, BLE
+│   ├── wiring-esp32-ir.md             # Combo ESP32 38-pin + IR 8 mắt (mặc định)
+│   ├── wiring-s3-ir.md                # Combo ESP32-S3 + IR 8 mắt
+│   ├── wiring-esp32-photores.md       # Combo ESP32 38-pin + Quang trở 8 mắt
+│   ├── wiring-esp32-tcrt5000-2d41.md  # Combo ESP32 38-pin + TCRT5000 2D4.1 (5 mắt)
+│   └── wiring-signals.svg             # Sơ đồ tín hiệu ESP32-S3 tham khảo
 ├── include/
-│   ├── config.h              # Cấu hình chân GPIO, tần số PWM, tham số PID, BLE
-│   ├── motor_driver.h        # Khai báo hàm điều khiển 4 động cơ L298N
-│   ├── line_sensor.h         # Khai báo hàm đọc và tính toán 8 mắt dò line
-│   ├── servo1.h              # Header điều khiển riêng biệt cho Servo 1 (GPIO 14)
-│   ├── servo2.h              # Header điều khiển riêng biệt cho Servo 2 (GPIO 21)
-│   ├── servo3.h              # Header điều khiển riêng biệt cho Servo 3 (GPIO 47)
-│   └── ble_controller.h      # Khai báo module Bluetooth Low Energy Bluefruit
+│   ├── config.h                       # Cấu hình chân GPIO theo board, PID, PWM, BLE
+│   ├── ble_controller.h               # BLE Nordic UART Service (Bluefruit)
+│   ├── line_sensor.h                  # Đọc cảm biến 5/8 mắt & tính vị trí line
+│   ├── motor_driver.h                 # Điều khiển 4 động cơ L298N
+│   ├── servo_pwm.h                    # Helper LEDC 50Hz 14-bit dùng chung cho servo
+│   ├── servo1.h / servo2.h / servo3.h # Giao diện điều khiển 3 servo độc lập
 ├── src/
-│   ├── motor_driver.cpp      # Hiện thực điều khiển tốc độ và hướng động cơ
-│   ├── line_sensor.cpp       # Hiện thực thuật toán đọc cảm biến và gán trọng số
-│   ├── servo1.cpp            # Mã nguồn điều khiển Servo 1 (nơi thêm logic sau này)
-│   ├── servo2.cpp            # Mã nguồn điều khiển Servo 2 (nơi thêm logic sau này)
-│   ├── servo3.cpp            # Mã nguồn điều khiển Servo 3 (nơi thêm logic sau này)
-│   ├── ble_controller.cpp    # Hiện thực giao thức Nordic UART Service cho Bluefruit
-│   └── main.cpp              # Vòng lặp chính điều phối toàn bộ hệ thống
-├── platformio.ini            # File cấu hình PlatformIO (board esp32-s3-devkitc-1)
-└── README.md                 # Giới thiệu dự án
+│   ├── main.cpp                       # Vòng lặp chính & thuật toán bám line
+│   ├── ble_controller.cpp             # Xử lý gói Control Pad & UART non-blocking
+│   ├── line_sensor.cpp                # Lọc, giải mã, bám viền / bám giữa vạch
+│   ├── motor_driver.cpp               # Xuất PWM & điều hướng L298N
+│   ├── servo_pwm.cpp                  # Cấu hình LEDC phần cứng cho servo
+│   └── servo1.cpp / servo2.cpp / servo3.cpp
+└── platformio.ini                     # Cấu hình 4 build environments (mặc định esp32-ir)
 ```
 
 ---
 
-## 🚀 Hướng Dẫn Biên Dịch & Nạp Code
+## 🚀 Biên Dịch & Nạp Code
 
-### 1. Cài đặt PlatformIO
-
-Đảm bảo bạn đã cài đặt extension **PlatformIO IDE** trong VS Code hoặc cài đặt qua dòng lệnh `pio`:
+Yêu cầu cài **PlatformIO** (`pip install platformio` hoặc extension PlatformIO IDE trên VS Code).
 
 ```bash
-pip install platformio
-```
+# Biên dịch & nạp bản mặc định (esp32-ir: ESP32 38-pin + IR 8 mắt)
+pio run -t upload
 
-### 2. Biên dịch dự án (Build)
+# Hoặc chọn env cụ thể theo phần cứng:
+pio run -e s3-ir -t upload
+pio run -e esp32-photores -t upload
+pio run -e esp32-tcrt5000-2d41 -t upload
 
-Mở terminal trong thư mục dự án và chạy:
-
-```bash
-pio run
-```
-
-### 3. Nạp code vào ESP32-S3 (Upload)
-
-Kết nối ESP32-S3 với máy tính qua cổng USB và chạy:
-
-```bash
-pio run --target upload
-```
-
-### 4. Mở Serial Monitor để quan sát
-
-```bash
+# Mở Serial Monitor
 pio device monitor -b 115200
 ```
 
 ---
 
-## 🎮 Hướng Dẫn Sử Dụng App Bluefruit LE & Kiểm Tra Cảm Biến
+## 🎮 Điều Khiển Qua App Adafruit Bluefruit LE Connect
 
-1. Tải ứng dụng **Adafruit Bluefruit LE Connect** trên iOS hoặc Android.
-2. Mở Bluetooth điện thoại, quét và bấm Connect vào thiết bị **xe dò line** (luôn bật sẵn, không cần mã PIN).
-3. **Tab UART / Terminal (Theo dõi & Cân chỉnh Cảm biến trực tiếp):**
-   - Màn hình sẽ tự động cập nhật liên tục mỗi 300ms trạng thái 8 mắt:
-
-     ```
-     R:11000011 [..####..] E:+0.0
-     ```
-
-     - `R:11000011`: Mức logic điện áp thực tế đọc từ 8 chân GPIO (S1..S8).
-     - `[..####..]`: Trạng thái giải mã trực quan (`#` = Vạch đen, `.` = Nền trắng).
-     - `E:+0.0`: Vị trí mép viền gần tâm trong mẫu hiển thị (`-3.0` đến `+3.0` theo bước mắt **6 mm**, tương ứng `-18 mm` đến `+18 mm`). Các mẫu khác có thể báo `ALL_WHITE`, `ALL_BLACK`, `CROSS` hoặc `NO_EDGE`.
-   - **Các lệnh tương tác nhanh (gõ vào ô gửi văn bản trong tab UART):**
-     - `?` hoặc `H`: Trả về báo cáo chẩn đoán chi tiết từng chân GPIO, mức điện áp, logic hiện hành.
-     - `I`: Đảo mức logic bắt vạch đen (`HIGH` <-> `LOW`). Dùng ngay khi mắt đọc nhận diện ngược.
-     - `P`: Bật / Tắt trở kéo nội `INPUT_PULLUP` trên 8 chân GPIO.
-     - `T`: Tạm dừng hoặc tiếp tục luồng phát Telemetry trực tiếp.
-     - `V`: Chuyển giữa trắng trái, đen trái và tự chọn viền.
-     - `+`, `-`: Chỉnh tốc độ cơ bản khi bám viền.
-     - `1`: Bắt đầu / Tạm dừng chế độ dò viền.
-     - `2`: Kích hoạt Servo 1 (TD-8120MG) đẩy kịch 100% hành trình (270 độ / 2500µs).
-     - `3`, `4`: Kích hoạt Servo 2, Servo 3.
-4. **Tab Controller -> Control Pad:**
-   - **Nút 1**: Khởi động / Tạm dừng dò viền (Edge Tracking).
-   - **Nút 2**: Điều khiển Servo 1 (TD-8120MG trên chân 14) gạt hết 100% hành trình.
-   - **Nút 3, 4**: Test Servo 2 và Servo 3.
-   - **D-Pad (Mũi tên lên, xuống, trái, phải)**: Lái xe thủ công khi ở chế độ Standby.
-
-### Cân chỉnh tốc độ thấp và bám viền
-
-- Mỗi bên động cơ nhận ít nhất `245/255` trong 120 ms đầu khi khởi hành, sau đó về PWM được yêu cầu với sàn `165/255`. Tốc độ bám viền cơ bản là `185/255` và chế độ tay là `220/255`. Các mức này nằm trong `include/config.h`.
-- Kê bánh lên khỏi sàn và thử nhấn mũi tên lên trong Standby. Nếu bánh vẫn đứng và động cơ chỉ kêu, thả nút rồi kiểm tra bánh hoặc hộp số bị kẹt, điện áp tại cọc cấp nguồn L298N lúc đề-pa và chiều quay của hai bánh trên mỗi bên.
-- Mắt đọc cách sàn **0,5 mm**, khoảng cách giữa hai mắt đọc liền kề **6 mm** (tổng dãy 8 mắt dài **42 mm**), bề ngang vạch đen **16 mm**. Kiểm tra thanh cảm biến không cạ sàn, rồi đặt mép vạch giữa S4 và S5. Dùng `V` để chọn đúng phía màu đen và `I` nếu trạng thái `#` và `.` trong app bị đảo. Khi mất viền, xe tìm lại tối đa 750 ms rồi dừng. Xe tiếp tục khi cảm biến thấy lại mép hợp lệ.
-- Kiểm tra hướng rẽ bằng hai nút **←** và **→** trong Standby. Khi đưa vạch đen vào hai mắt ngoài cùng bên trái, dãy cảm biến trong UART sẽ hiện `[##......]`. Nếu chỉ còn thấy mép ngược với chế độ bám viền đã chọn, xe tìm về phía còn thấy màu đen.
+1. Mở Bluetooth & Định vị trên điện thoại → kết nối thiết bị theo tên `BLE_DEVICE_NAME` trong [include/config.h](include/config.h) (không cần mã PIN).
+2. **Tab Controller → Control Pad:**
+   - **Nút `1`**: Bắt đầu / Tạm dừng dò line.
+   - **Nút `2` / `3` / `4`**: Đảo góc Servo 1 (`0° ↔ 270°`), Servo 2 (`0° ↔ 180°`), Servo 3 (`0° ↔ 180°`).
+   - **D-Pad (`↑ ↓ ← →`)**: Lái xe thủ công khi đang ở chế độ Standby.
+3. **Tab UART / Terminal (gửi lệnh & xem cảm biến trực tiếp):**
+   - Telemetry mỗi `300 ms`: `R:11000011 [..####..] E:+0.0` (`#` = vạch đen, `.` = nền trắng; có thể báo `ALL_WHITE`, `ALL_BLACK`, `CROSS`, `NO_EDGE`).
+   - Lệnh nhanh:
+     - `?` hoặc `H`: Xem chi tiết từng chân GPIO, mức logic, chế độ hiện tại.
+     - `1`: Bắt đầu / Tạm dừng dò line.
+     - `V`: Đổi chế độ bám (`TRANG TRAI - DEN PHAI` / `DEN TRAI - TRANG PHAI` / `AUTO` / `BAM GIUA VACH`).
+     - `I`: Đảo mức logic vạch đen (`LOW ↔ HIGH`).
+     - `P`: Bật / Tắt `INPUT_PULLUP` cho các chân cảm biến.
+     - `E`: Bật / Tắt đèn phát IR (khi dùng mạch có chân `IR_EN`).
+     - `T`: Bật / Tắt luồng telemetry tự động.
+     - `+` / `-`: Tăng / Giảm tốc độ cơ bản (`MOTOR_BASE_SPEED`).
+     - `2`, `3`, `4` hoặc `S1 <góc/µs>`, `S2 <góc>`, `S3 <góc>`: Điều khiển trực tiếp từng servo.
+     - `F`, `B`, `L`, `R`, `S`: Tiến, lùi, quay trái, quay phải, dừng (khi ở Standby).

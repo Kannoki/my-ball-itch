@@ -174,7 +174,7 @@ Dự án tích hợp giao thức Nordic UART Service (NUS) tương thích 100% v
    - **Android:** Tải `Adafruit Bluefruit LE Connect` trên Google Play Store.
 2. **Kết nối:**
    - Bật Bluetooth và Định vị trên điện thoại.
-   - Mở ứng dụng, quét tìm thiết bị có tên: **`xe dò line`** (không cần nhập mật khẩu, bấm là kết nối ngay).
+   - Mở ứng dụng, quét tìm thiết bị theo tên **`BLE_DEVICE_NAME`** cấu hình trong `include/config.h` (không cần nhập mật khẩu, bấm là kết nối ngay).
    - Bấm **Connect**.
 3. **Các chế độ điều khiển:**
    - **Mục Controller -> Control Pad:**

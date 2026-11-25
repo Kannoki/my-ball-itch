@@ -30,7 +30,7 @@ void setup() {
     delay(1000); // Cho on dinh nguon va ket noi Serial USB
 
     Serial.println("==================================================");
-    Serial.println("   ESP32-S3 ROBOT: 8 SENSORS + L298N + 3 SERVO   ");
+    Serial.println("   WDF LINE TRACKER: LINE SENSOR + L298N + SERVO  ");
     Serial.println("         BLUEFRUIT BLE WIRELESS CONTROL           ");
     Serial.println("==================================================");
 
@@ -54,8 +54,8 @@ void setup() {
     Serial.println("==================================================");
     Serial.println("[System] KHOI DONG THANH CONG!");
     Serial.println("[System] Robot dang o trang thai: CHO (STANDBY).");
-    Serial.println("[System] -> Ket noi Bluetooth 'xe do line' va");
-    Serial.println("[System] -> Bam phim '1' de BAT DAU bam vien line!");
+    Serial.printf("[System] -> Ket noi Bluetooth '%s' va\n", BLE_DEVICE_NAME);
+    Serial.println("[System] -> Bam phim '1' de BAT DAU do line!");
     Serial.println("==================================================");
 }
 
