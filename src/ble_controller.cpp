@@ -61,18 +61,21 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
         int target = (servo1_getAngle() < SERVO1_MAX_ANGLE / 2) ? SERVO1_MAX_ANGLE : 0;
         servo1_setAngle(target);
         bleSendLog("Servo 1 (TD-8120MG / Pin " + String(PIN_SERVO_1) + "): " + String(target) + " deg (" + String(servo1_getMicroseconds()) + "us)\n");
+        return;
     }
     // Phim 3: KICH HOAT SERVO 2
     if (button == '3' && pressed) {
         int target = (servo2_getAngle() <= 90) ? 180 : 0;
         servo2_setAngle(target);
         bleSendLog("Servo 2 (Pin " + String(PIN_SERVO_2) + "): " + String(target) + " deg\n");
+        return;
     }
-    // Phim 4: KICH HOAT SERVO 3 (GPIO 2)
+    // Phim 4: KICH HOAT SERVO 3
     if (button == '4' && pressed) {
         int target = (servo3_getAngle() <= 90) ? 180 : 0;
         servo3_setAngle(target);
         bleSendLog("Servo 3 (Pin " + String(PIN_SERVO_3) + "): " + String(target) + " deg\n");
+        return;
     }
 
     // 3. Phim mui ten D-Pad: 5=UP, 6=DOWN, 7=LEFT, 8=RIGHT

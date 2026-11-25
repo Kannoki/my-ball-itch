@@ -57,11 +57,14 @@ enum EdgeMode {
 #define PIN_MOTOR_LEFT_ENB  13  // PWM dieu khien toc do ben trai (OUT3, OUT4)
 #endif
 
-// Thong so PWM cho ESP32-S3
+// Thong so PWM LEDC (Tach rieng timer cho dong co va 3 servo, tranh loi MCPWM tren ESP32-S3)
 #define PWM_FREQ        10000 // 10 kHz (em tieng dong co)
 #define PWM_RESOLUTION  8     // Do phan giai 8-bit (0 - 255)
-#define PWM_CH_LEFT     0     // Kenh PWM LEDC cho dong co trai (OUT3 & OUT4)
-#define PWM_CH_RIGHT    1     // Kenh PWM LEDC cho dong co phai (OUT1 & OUT2)
+#define PWM_CH_LEFT     0     // Kenh PWM LEDC 0 (Timer 0) cho dong co trai (OUT3 & OUT4)
+#define PWM_CH_RIGHT    1     // Kenh PWM LEDC 1 (Timer 0) cho dong co phai (OUT1 & OUT2)
+#define PWM_CH_SERVO1   2     // Kenh PWM LEDC 2 (Timer 1) cho Servo 1
+#define PWM_CH_SERVO2   4     // Kenh PWM LEDC 4 (Timer 2) cho Servo 2
+#define PWM_CH_SERVO3   6     // Kenh PWM LEDC 6 (Timer 3) cho Servo 3
 
 // Toc do mac dinh
 #define MOTOR_BASE_SPEED    185 // Toc do co ban khi di thang (0-255)
@@ -192,7 +195,7 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 #else
 #define PIN_SERVO_1     14  // Chan tin hieu Servo 1: TD-8120MG (20KG High Torque - Co cau day hanh trinh)
 #define PIN_SERVO_2     21  // Chan tin hieu Servo 2 (GPIO 21)
-#define PIN_SERVO_3     47  // Chan tin hieu Servo 3 (GPIO 47)
+#define PIN_SERVO_3     2  // Chan tin hieu Servo 3 (GPIO 47)
 #endif
 
 // Thong so chuan Datasheet cho Servo TD-8120MG tren CHAN GPIO 14 (20kg.cm Digital Metal Gear)
@@ -215,6 +218,6 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 // ==============================================================================
 // 4. CAU HINH BLUETOOTH LOW ENERGY (BLUEFRUIT BLE)
 // ==============================================================================
-#define BLE_DEVICE_NAME "xe dò line 9"
+#define BLE_DEVICE_NAME "xe dò line s3"
 
 #endif // CONFIG_H
