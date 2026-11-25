@@ -66,8 +66,10 @@ static void searchForLine(uint8_t raw, unsigned long now, int baseSpeed) {
         tracking.sharpTurn = false;
 
         const EdgeMode polarity = tracking.mode == EDGE_AUTO ? tracking.lastEdge.polarity : static_cast<EdgeMode>(tracking.mode);
-        if ((polarity == EDGE_WHITE_LEFT_BLACK_RIGHT || polarity == EDGE_BLACK_LEFT_WHITE_RIGHT) &&
-            (raw == 0x00 || raw == SENSOR_MASK)) {
+        if (fabsf(tracking.lastEdge.position) >= 1.0f) {
+            tracking.searchDirection = tracking.lastEdge.position < 0.0f ? -1 : 1;
+        } else if ((polarity == EDGE_WHITE_LEFT_BLACK_RIGHT || polarity == EDGE_BLACK_LEFT_WHITE_RIGHT) &&
+                   (raw == 0x00 || raw == SENSOR_MASK)) {
             const bool whiteOnLeft = polarity == EDGE_WHITE_LEFT_BLACK_RIGHT;
             const bool onWhite = raw == 0x00;
             tracking.searchDirection = (onWhite == whiteOnLeft) ? 1 : -1;
@@ -88,6 +90,14 @@ static void searchForLine(uint8_t raw, unsigned long now, int baseSpeed) {
     } else {
         spinRight(min(baseSpeed, MOTOR_SEARCH_SPEED));
     }
+}
+
+static int clampCurveMotorSpeed(int rawSpeed, int minPwm) {
+    // Cho phep banh trong cua dung han (0) khi can om cua gat, tranh ep chay tien o muc minPwm.
+    if (rawSpeed < (minPwm * 3) / 4) {
+        return 0;
+    }
+    return constrain(rawSpeed, minPwm, MOTOR_MAX_SPEED);
 }
 
 static void processLineTracking() {
@@ -152,8 +162,8 @@ static void processLineTracking() {
 
     const int cruiseSpeed = max(MOTOR_MIN_SPEED, baseSpeed - static_cast<int>(LINE_CURVE_SPEED_DROP * fabsf(error)));
     const float correction = PID_KP * error + PID_KD * derivative;
-    const int leftSpeed = constrain(static_cast<int>(cruiseSpeed + correction), MOTOR_MIN_PWM_LEFT, MOTOR_MAX_SPEED);
-    const int rightSpeed = constrain(static_cast<int>(cruiseSpeed - correction), MOTOR_MIN_PWM_RIGHT, MOTOR_MAX_SPEED);
+    const int leftSpeed = clampCurveMotorSpeed(static_cast<int>(cruiseSpeed + correction), MOTOR_MIN_PWM_LEFT);
+    const int rightSpeed = clampCurveMotorSpeed(static_cast<int>(cruiseSpeed - correction), MOTOR_MIN_PWM_RIGHT);
 
     setMotorSpeeds(leftSpeed, rightSpeed);
 }

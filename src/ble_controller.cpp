@@ -9,6 +9,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <mutex>
 
 // UUID chuan Nordic UART Service dung boi Adafruit Bluefruit LE Connect app
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -345,6 +346,36 @@ void bleControllerInit() {
     Serial.printf("[BLE] BLE luon bat (khong mat khau), ten: '%s'\n", BLE_DEVICE_NAME);
 }
 
+static std::mutex bleTxMutex;
+static String bleTxQueue;
+static unsigned long lastBleNotifyAt = 0;
+constexpr size_t BLE_TX_MAX_QUEUE = 512;
+constexpr unsigned long BLE_NOTIFY_INTERVAL_MS = 12;
+
+static void pumpBleTxQueue(unsigned long now) {
+    if (!deviceConnected || pTxCharacteristic == nullptr) {
+        const std::lock_guard<std::mutex> lock(bleTxMutex);
+        bleTxQueue = "";
+        return;
+    }
+
+    uint8_t chunk[20];
+    size_t chunkSize = 0;
+    {
+        const std::lock_guard<std::mutex> lock(bleTxMutex);
+        if (bleTxQueue.length() == 0 || (now - lastBleNotifyAt < BLE_NOTIFY_INTERVAL_MS)) {
+            return;
+        }
+        chunkSize = min(static_cast<size_t>(20), static_cast<size_t>(bleTxQueue.length()));
+        memcpy(chunk, bleTxQueue.c_str(), chunkSize);
+        bleTxQueue.remove(0, chunkSize);
+        lastBleNotifyAt = now;
+    }
+
+    pTxCharacteristic->setValue(chunk, chunkSize);
+    pTxCharacteristic->notify();
+}
+
 void bleControllerUpdate() {
     static bool wasConnected = false;
     static bool retryAdvertising = false;
@@ -365,6 +396,8 @@ void bleControllerUpdate() {
         pServer->startAdvertising();
         Serial.println("[BLE] Bat dau quang ba lai...");
     }
+
+    pumpBleTxQueue(now);
 }
 
 bool isBleConnected() {
@@ -372,18 +405,10 @@ bool isBleConnected() {
 }
 
 void bleSendLog(const String& message) {
-    if (!deviceConnected || pTxCharacteristic == nullptr) return;
+    if (!deviceConnected || pTxCharacteristic == nullptr || message.length() == 0) return;
 
-    size_t len = message.length();
-    const uint8_t* data = (const uint8_t*)message.c_str();
-    size_t offset = 0;
-    while (offset < len) {
-        size_t chunkSize = (len - offset > 20) ? 20 : (len - offset);
-        pTxCharacteristic->setValue((uint8_t*)(data + offset), chunkSize);
-        pTxCharacteristic->notify();
-        offset += chunkSize;
-        if (offset < len) {
-            delay(12); // Ngan tran bo dem BLE notify
-        }
+    const std::lock_guard<std::mutex> lock(bleTxMutex);
+    if (bleTxQueue.length() + message.length() <= BLE_TX_MAX_QUEUE) {
+        bleTxQueue += message;
     }
 }
