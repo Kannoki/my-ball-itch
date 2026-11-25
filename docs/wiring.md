@@ -100,6 +100,7 @@ Nếu dây bên trái đã vào `OUT1/OUT2` và dây bên phải vào `OUT3/OUT4
 > - **ESP32-S3 + Cảm biến IR 8 mắt:** [docs/wiring-s3-ir.md](wiring-s3-ir.md)
 > - **ESP32 38-pin + Cảm biến IR 8 mắt:** [docs/wiring-esp32-ir.md](wiring-esp32-ir.md)
 > - **ESP32 38-pin + Cảm biến Quang trở 8 mắt:** [docs/wiring-esp32-photores.md](wiring-esp32-photores.md)
+> - **ESP32 38-pin + Cảm biến TCRT5000 2D4.1 (5 mắt):** [docs/wiring-esp32-tcrt5000-2d41.md](wiring-esp32-tcrt5000-2d41.md)
 
 Thanh cảm biến xếp từ trái sang phải: `S1 -> S2 -> S3 -> S4 -> S5 -> S6 -> S7 -> S8`.
 

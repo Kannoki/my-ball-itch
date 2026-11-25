@@ -66,7 +66,8 @@ static void searchForLine(uint8_t raw, unsigned long now, int baseSpeed) {
         tracking.sharpTurn = false;
 
         const EdgeMode polarity = tracking.mode == EDGE_AUTO ? tracking.lastEdge.polarity : static_cast<EdgeMode>(tracking.mode);
-        if (polarity != EDGE_AUTO && (raw == 0x00 || raw == 0xFF)) {
+        if ((polarity == EDGE_WHITE_LEFT_BLACK_RIGHT || polarity == EDGE_BLACK_LEFT_WHITE_RIGHT) &&
+            (raw == 0x00 || raw == SENSOR_MASK)) {
             const bool whiteOnLeft = polarity == EDGE_WHITE_LEFT_BLACK_RIGHT;
             const bool onWhite = raw == 0x00;
             tracking.searchDirection = (onWhite == whiteOnLeft) ? 1 : -1;
@@ -76,7 +77,7 @@ static void searchForLine(uint8_t raw, unsigned long now, int baseSpeed) {
     }
 
     // Mau tron chi con mep nguoc chieu: tim ve phia cac mat dang thay den.
-    if (raw != 0x00 && raw != 0xFF) {
+    if (raw != 0x00 && raw != SENSOR_MASK) {
         tracking.searchDirection = (raw & 0x01) ? -1 : 1;
     }
 

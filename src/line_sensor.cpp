@@ -1,14 +1,22 @@
 #include "line_sensor.h"
 
-// Mang chua 8 chan GPIO cua 8 cam bien theo thu tu tu trai qua phai
+// Mang chua cac chan GPIO cua cam bien theo thu tu tu trai qua phai
 static const uint8_t sensorPins[NUM_SENSORS] = {
+#if NUM_SENSORS == 5
+    PIN_LINE_S1, PIN_LINE_S2, PIN_LINE_S3, PIN_LINE_S4, PIN_LINE_S5
+#else
     PIN_LINE_S1, PIN_LINE_S2, PIN_LINE_S3, PIN_LINE_S4,
     PIN_LINE_S5, PIN_LINE_S6, PIN_LINE_S7, PIN_LINE_S8
+#endif
 };
 
-// Trong so tuong ung cho tung cam bien: S1 (-3.5) -> S8 (+3.5)
+// Trong so tuong ung cho tung cam bien tu trai qua phai
 static const float sensorWeights[NUM_SENSORS] = {
+#if NUM_SENSORS == 5
+    -2.0f, -1.0f, 0.0f, 1.0f, 2.0f
+#else
     -3.5f, -2.5f, -1.5f, -0.5f, 0.5f, 1.5f, 2.5f, 3.5f
+#endif
 };
 
 static float lastKnownPos = 0.0f;
@@ -70,19 +78,21 @@ void lineSensorInit() {
     setSensorIrEmitter(true);
     setSensorPullup(sensorPullupEnabled);
 #if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
-    Serial.printf("[Sensor] Khoi tao 8 mat do line! IR Enable: GPIO %d (HIGH) | Tro keo: %s | Muc bat vach den: %s\n",
+    Serial.printf("[Sensor] Khoi tao %d mat do line! IR Enable: GPIO %d (HIGH) | Tro keo: %s | Muc bat vach den: %s\n",
+                  NUM_SENSORS,
                   PIN_LINE_IR_EN,
                   sensorPullupEnabled ? "INPUT_PULLUP" : "INPUT",
                   (lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)");
 #else
-    Serial.printf("[Sensor] Khoi tao 8 mat quang tro! IR Enable: KHONG DUNG | Tro keo: %s | Muc bat vach den: %s\n",
+    Serial.printf("[Sensor] Khoi tao %d mat cam bien! IR Enable: KHONG DUNG | Tro keo: %s | Muc bat vach den: %s\n",
+                  NUM_SENSORS,
                   sensorPullupEnabled ? "INPUT_PULLUP" : "INPUT",
                   (lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)");
 #endif
 }
 
 static uint8_t decodeSensorPins(uint8_t pins) {
-    return (lineActiveState == HIGH) ? pins : static_cast<uint8_t>(~pins);
+    return ((lineActiveState == HIGH) ? pins : static_cast<uint8_t>(~pins)) & SENSOR_MASK;
 }
 
 uint8_t readRawSensors() {
@@ -103,7 +113,8 @@ float getLinePosition() {
 
     if (activeCount == 0) {
         lineCurrentlyLost = true;
-        return (lastKnownPos > 0) ? 3.5f : -3.5f;
+        const float maxWeight = (NUM_SENSORS - 1) * 0.5f;
+        return (lastKnownPos > 0) ? maxWeight : -maxWeight;
     }
 
     lineCurrentlyLost = false;
@@ -119,10 +130,12 @@ void toggleEdgeFollowMode() {
         edgeFollowMode = EDGE_BLACK_LEFT_WHITE_RIGHT;
     } else if (edgeFollowMode == EDGE_BLACK_LEFT_WHITE_RIGHT) {
         edgeFollowMode = EDGE_AUTO;
+    } else if (edgeFollowMode == EDGE_AUTO) {
+        edgeFollowMode = EDGE_CENTER_LINE;
     } else {
         edgeFollowMode = EDGE_WHITE_LEFT_BLACK_RIGHT;
     }
-    Serial.printf("[Sensor] Doi che do bam vien sang: %s\n", getEdgeFollowModeName());
+    Serial.printf("[Sensor] Doi che do do line sang: %s\n", getEdgeFollowModeName());
 }
 
 const char* getEdgeFollowModeName() {
@@ -130,13 +143,30 @@ const char* getEdgeFollowModeName() {
         case EDGE_WHITE_LEFT_BLACK_RIGHT: return "TRANG TRAI - DEN PHAI";
         case EDGE_BLACK_LEFT_WHITE_RIGHT: return "DEN TRAI - TRANG PHAI";
         case EDGE_AUTO:                   return "TU DONG (AUTO)";
+        case EDGE_CENTER_LINE:            return "BAM GIUA VACH (CENTER)";
         default:                          return "UNKNOWN";
     }
 }
 
 bool findLineEdge(uint8_t raw, uint8_t mode, float reference, LineEdge& edge) {
+    if (mode == EDGE_CENTER_LINE) {
+        if (raw == 0x00 || raw == SENSOR_MASK) return false;
+        float weightedSum = 0.0f;
+        int activeCount = 0;
+        for (int i = 0; i < NUM_SENSORS; i++) {
+            if (raw & (1 << i)) {
+                weightedSum += sensorWeights[i];
+                activeCount++;
+            }
+        }
+        if (activeCount == 0) return false;
+        edge = {weightedSum / static_cast<float>(activeCount), EDGE_CENTER_LINE};
+        return true;
+    }
+
     float minDiff = NUM_SENSORS;
     bool found = false;
+    const float centerPairOffset = (NUM_SENSORS - 2) * 0.5f;
 
     for (int i = 0; i < NUM_SENSORS - 1; i++) {
         const bool blackLeft = raw & (1 << i);
@@ -146,7 +176,7 @@ bool findLineEdge(uint8_t raw, uint8_t mode, float reference, LineEdge& edge) {
         const EdgeMode polarity = blackRight ? EDGE_WHITE_LEFT_BLACK_RIGHT : EDGE_BLACK_LEFT_WHITE_RIGHT;
         if (mode != EDGE_AUTO && mode != polarity) continue;
 
-        const float position = i - 3.0f; // Giua S4 va S5 la 0.
+        const float position = i - centerPairOffset;
         const float distance = fabsf(position - reference);
         if (distance < minDiff) {
             minDiff = distance;
@@ -162,7 +192,7 @@ bool isAllWhite() {
 }
 
 bool isAllBlack() {
-    return (readRawSensors() == 0xFF);
+    return (readRawSensors() == SENSOR_MASK);
 }
 
 bool isLineLost() {
@@ -187,7 +217,7 @@ float getLastKnownPosition() {
 
 static String getSensorStatus(uint8_t raw) {
     if (raw == 0x00) return "ALL_WHITE";
-    if (raw == 0xFF) return "ALL_BLACK";
+    if (raw == SENSOR_MASK) return "ALL_BLACK";
 
     LineEdge edge;
     if (!findLineEdge(raw, edgeFollowMode, 0.0f, edge)) {
@@ -203,14 +233,14 @@ String getSensorTelemetryCompact() {
     uint8_t directPins = readDirectGpioPins();
     uint8_t raw = decodeSensorPins(directPins);
 
-    char directBuf[9];
-    char lineBuf[9];
+    char directBuf[NUM_SENSORS + 1];
+    char lineBuf[NUM_SENSORS + 1];
     for (int i = 0; i < NUM_SENSORS; i++) {
         directBuf[i] = (directPins & (1 << i)) ? '1' : '0';
         lineBuf[i]   = (raw & (1 << i)) ? '#' : '.';
     }
-    directBuf[8] = '\0';
-    lineBuf[8]   = '\0';
+    directBuf[NUM_SENSORS] = '\0';
+    lineBuf[NUM_SENSORS]   = '\0';
 
     return "R:" + String(directBuf) + " [" + String(lineBuf) + "] " + getSensorStatus(raw) + "\n";
 }
@@ -219,8 +249,12 @@ String getSensorTelemetryDetailed() {
     uint8_t directPins = readDirectGpioPins();
     uint8_t raw = decodeSensorPins(directPins);
 
-    String s = "\n=== 8-SENSOR DIAGNOSTIC ===\n";
-    s += "Pins: S1(" + String(PIN_LINE_S1) + ") S2(" + String(PIN_LINE_S2) + ") S3(" + String(PIN_LINE_S3) + ") S4(" + String(PIN_LINE_S4) + ") S5(" + String(PIN_LINE_S5) + ") S6(" + String(PIN_LINE_S6) + ") S7(" + String(PIN_LINE_S7) + ") S8(" + String(PIN_LINE_S8) + ")\n";
+    String s = "\n=== " + String(NUM_SENSORS) + "-SENSOR DIAGNOSTIC ===\n";
+    s += "Pins:";
+    for (int i = 0; i < NUM_SENSORS; i++) {
+        s += " S" + String(i + 1) + "(" + String(sensorPins[i]) + ")";
+    }
+    s += "\n";
     s += "GPIO:  ";
     for (int i = 0; i < NUM_SENSORS; i++) {
         s += String((directPins & (1 << i)) ? "1" : "0") + "     ";
@@ -234,7 +268,7 @@ String getSensorTelemetryDetailed() {
 #if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
     s += "IR LED: " + String(isSensorIrEmitterEnabled() ? "BAT (GPIO " : "TAT (GPIO ") + String(PIN_LINE_IR_EN) + (isSensorIrEmitterEnabled() ? " = HIGH)" : " = LOW)") + " [Bam 'E' de bat/tat]\n";
 #else
-    s += "IR LED: KHONG DUNG (Cam bien quang tro)\n";
+    s += "IR LED: KHONG DUNG\n";
 #endif
     s += "Pullup: " + String(sensorPullupEnabled ? "BAT (INPUT_PULLUP)" : "TAT (INPUT)") + " [Bam 'P' de dao]\n";
     s += "Vien  : " + String(getEdgeFollowModeName()) + " [Bam 'V' de doi]\n";

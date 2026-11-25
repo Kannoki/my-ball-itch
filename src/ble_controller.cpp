@@ -55,18 +55,18 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
         return;
     }
 
-    // 2. Phim 2: KICH HOAT SERVO 1 (TD-8120MG tren GPIO 14) day kịch 100% hanh trinh
+    // 2. Phim 2: KICH HOAT SERVO 1 (TD-8120MG) day kịch 100% hanh trinh
     if (button == '2' && pressed) {
         // Toggle giua 0 do (500us - thu ve) va 270 do (2500us - day het co 100%)
         int target = (servo1_getAngle() < SERVO1_MAX_ANGLE / 2) ? SERVO1_MAX_ANGLE : 0;
         servo1_setAngle(target);
-        bleSendLog("Servo 1 (TD-8120MG / Pin 14): " + String(target) + " deg (" + String(servo1_getMicroseconds()) + "us)\n");
+        bleSendLog("Servo 1 (TD-8120MG / Pin " + String(PIN_SERVO_1) + "): " + String(target) + " deg (" + String(servo1_getMicroseconds()) + "us)\n");
     }
-    // Phim 3: KICH HOAT SERVO 2 (GPIO 21)
+    // Phim 3: KICH HOAT SERVO 2
     if (button == '3' && pressed) {
         int target = (servo2_getAngle() <= 90) ? 180 : 0;
         servo2_setAngle(target);
-        bleSendLog("Servo 2 (Pin 21): " + String(target) + " deg\n");
+        bleSendLog("Servo 2 (Pin " + String(PIN_SERVO_2) + "): " + String(target) + " deg\n");
     }
     // Phim 4: KICH HOAT SERVO 3 (GPIO 2)
     if (button == '4' && pressed) {
@@ -120,11 +120,15 @@ static void handleUartText(const String& text) {
         return;
     }
 
-    // Bat / tat den LED phat hong ngoai (IR Emitter tren GPIO 1): E hoac e
+    // Bat / tat den LED phat hong ngoai (IR Emitter): E hoac e
     if (c == 'E' || c == 'e') {
+#if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
         bool newState = !isSensorIrEmitterEnabled();
         setSensorIrEmitter(newState);
-        bleSendLog("IR EMITTER (GPIO 1) -> " + String(newState ? "BAT (HIGH - Sang 8 den)\n" : "TAT (LOW - Tat 8 den)\n"));
+        bleSendLog("IR EMITTER (GPIO " + String(PIN_LINE_IR_EN) + ") -> " + String(newState ? "BAT (HIGH)\n" : "TAT (LOW)\n"));
+#else
+        bleSendLog("IR EMITTER: KHONG DUNG tren module nay\n");
+#endif
         return;
     }
 
@@ -178,14 +182,14 @@ static void handleUartText(const String& text) {
     if (c == '2' && cmd.length() == 1) {
         int target = (servo1_getAngle() < SERVO1_MAX_ANGLE / 2) ? SERVO1_MAX_ANGLE : 0;
         servo1_setAngle(target);
-        bleSendLog("Servo 1 (Pin 14): " + String(target) + " deg (" + String(servo1_getMicroseconds()) + "us)\n");
+        bleSendLog("Servo 1 (Pin " + String(PIN_SERVO_1) + "): " + String(target) + " deg (" + String(servo1_getMicroseconds()) + "us)\n");
         return;
     }
     // Kich hoat Servo 2 khi bam '3' (tuong ung Nut 3):
     if (c == '3' && cmd.length() == 1) {
         int target = (servo2_getAngle() <= 90) ? 180 : 0;
         servo2_setAngle(target);
-        bleSendLog("Servo 2 (Pin 21): " + String(target) + " deg\n");
+        bleSendLog("Servo 2 (Pin " + String(PIN_SERVO_2) + "): " + String(target) + " deg\n");
         return;
     }
     // Kich hoat Servo 3 khi bam '4' (tuong ung Nut 4):
@@ -242,10 +246,10 @@ static void handleUartText(const String& text) {
         int val = cmd.substring(spaceIdx + 1).toInt();
         if (val > 360) {
             servo1_setMicroseconds(val);
-            bleSendLog("Servo 1 (Pin 14) Pulse: " + String(val) + "us\n");
+            bleSendLog("Servo 1 (Pin " + String(PIN_SERVO_1) + ") Pulse: " + String(val) + "us\n");
         } else {
             servo1_setAngle(val);
-            bleSendLog("Servo 1 (Pin 14) Angle: " + String(val) + " deg (" + String(servo1_getMicroseconds()) + "us)\n");
+            bleSendLog("Servo 1 (Pin " + String(PIN_SERVO_1) + ") Angle: " + String(val) + " deg (" + String(servo1_getMicroseconds()) + "us)\n");
         }
         return;
     }
@@ -253,7 +257,7 @@ static void handleUartText(const String& text) {
         int spaceIdx = cmd.indexOf(' ');
         int val = cmd.substring(spaceIdx + 1).toInt();
         servo2_setAngle(val);
-        bleSendLog("Servo 2 (Pin 21) Angle: " + String(val) + " deg\n");
+        bleSendLog("Servo 2 (Pin " + String(PIN_SERVO_2) + ") Angle: " + String(val) + " deg\n");
         return;
     }
     if (upperCmd.startsWith("S3 ") || (c == '4' && cmd.length() > 2)) {

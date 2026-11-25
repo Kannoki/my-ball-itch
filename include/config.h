@@ -17,11 +17,16 @@ enum RobotMode {
 enum EdgeMode {
     EDGE_WHITE_LEFT_BLACK_RIGHT = 0, // Ben trai la Trang (0), ben phai la Den (1): chuyen tiep 0 -> 1
     EDGE_BLACK_LEFT_WHITE_RIGHT = 1, // Ben trai la Den (1), ben phai la Trang (0): chuyen tiep 1 -> 0
-    EDGE_AUTO                   = 2  // Tu dong tim ranh gioi mep bien gan tam nhat
+    EDGE_AUTO                   = 2, // Tu dong tim ranh gioi mep bien gan tam nhat
+    EDGE_CENTER_LINE            = 3  // Bam giua vach den (phu hop thanh 5 mat TCRT5000 2D4.1)
 };
 
-// Mac dinh: Bam vien trai (Trang ben trai, Den ben phai)
+// Mac dinh: Bam giua vach voi TCRT5000 5 mat, bam vien trai voi thanh 8 mat
+#ifdef SENSOR_TCRT5000_5CH
+#define EDGE_FOLLOW_MODE EDGE_CENTER_LINE
+#else
 #define EDGE_FOLLOW_MODE EDGE_WHITE_LEFT_BLACK_RIGHT
+#endif
 
 // ==============================================================================
 // 1. CAU HINH CHAN DIEU KHIEN DONG CO L298N (4 DONG CO)
@@ -79,28 +84,36 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 #endif
 
 // ==============================================================================
-// 2. CAU HINH CHAN CAM BIEN DO LINE (8 SENSORS)
-// Thong so vat ly: Line den rong 16 mm, mat doc cach san 0.5 mm, buoc tam 2 mat lien ke 6 mm (tong dai 42 mm).
-// Khoang cach tu mat doc sensor den truc 2 banh truoc la 4.0cm
+// 2. CAU HINH CHAN CAM BIEN DO LINE (5 SENSORS TCRT5000 2D4.1 HOAC 8 SENSORS)
 // ==============================================================================
+#ifdef SENSOR_TCRT5000_5CH
+#define NUM_SENSORS       5
+#define SENSOR_HEIGHT_MM  3.0f  // Khoang cach toi uu TCRT5000 2D4.1 (2 - 5 mm)
+#define SENSOR_PITCH_MM   18.0f // Buoc tam giua 2 mat TCRT5000 lien ke (~18 mm)
+#define LINE_WIDTH_MM     16.0f // Be ngang vach line den (16 mm)
+#else
 #define NUM_SENSORS       8
 #define SENSOR_HEIGHT_MM  0.5f  // Khoang cach tu mat doc sensor xuong mat dat (0.5 mm)
 #define SENSOR_PITCH_MM   6.0f  // Khoang cach giua 2 mat doc lien ke (6 mm)
 #define LINE_WIDTH_MM     16.0f // Be ngang vach line den (16 mm)
+#endif
+#define SENSOR_MASK       static_cast<uint8_t>((1U << NUM_SENSORS) - 1U)
 
 #ifdef BOARD_ESP32_38PIN
-// Day chan cam bien IR 8 mat cho ESP32 38-pin (cum GPIO ben phai, ho tro INPUT & INPUT_PULLUP)
+// Day chan cam bien cho ESP32 38-pin (cum GPIO ben phai, ho tro INPUT & INPUT_PULLUP)
 #define PIN_LINE_S1     23  // Cam bien ngoai cung ben trai
 #define PIN_LINE_S2     22
-#define PIN_LINE_S3     21
-#define PIN_LINE_S4     19  // Cam bien giua trai
-#define PIN_LINE_S5     18  // Cam bien giua phai
+#define PIN_LINE_S3     21  // Giua (voi 5 mat) / Lech trai (voi 8 mat)
+#define PIN_LINE_S4     19  // Lech phai (voi 5 mat) / Giua trai (voi 8 mat)
+#define PIN_LINE_S5     18  // Ngoai cung phai (voi 5 mat) / Giua phai (voi 8 mat)
+#ifndef SENSOR_TCRT5000_5CH
 #define PIN_LINE_S6     5
 #define PIN_LINE_S7     17
 #define PIN_LINE_S8     16  // Cam bien ngoai cung ben phai
+#endif
 
-#ifdef SENSOR_PHOTORESISTOR
-#define PIN_LINE_IR_EN  -1  // Thanh quang tro khong co chan IR Enable
+#if defined(SENSOR_PHOTORESISTOR) || defined(SENSOR_TCRT5000_5CH)
+#define PIN_LINE_IR_EN  -1  // Quang tro va TCRT5000 2D4.1 (7 chan) khong co chan IR Enable
 #else
 #define PIN_LINE_IR_EN  4   // GPIO 4 xuat HIGH bat den IR (tranh GPIO 1 TX0 cua ESP32 38-pin)
 #endif
@@ -122,7 +135,7 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 #endif
 
 // Muc logic khi cam bien phat hien vach line den:
-// - Thanh IR 8 mat (HY-S301 / TCRT5000): vach DEN -> LOW (0), nen TRANG -> HIGH (1)
+// - Thanh IR 8 mat & TCRT5000 2D4.1: vach DEN -> LOW (0), nen TRANG -> HIGH (1)
 // - Thanh quang tro (LDR) 8 mat: thuong vach DEN -> HIGH (1), nen TRANG -> LOW (0)
 #ifdef SENSOR_PHOTORESISTOR
 #define LINE_ACTIVE_STATE HIGH
@@ -130,7 +143,18 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 #define LINE_ACTIVE_STATE LOW
 #endif
 
-// Nguong phan loai cho goc cua gat (khi mep bien chay ra vung mat ngoai cung S2/S1 hoac S7/S8)
+// Nguong phan loai cho goc cua gat & he so PID theo so mat cam bien
+#ifdef SENSOR_TCRT5000_5CH
+#define SENSORS_CROSS_LINE_THRESHOLD 4    // Nguong nhan dien vach ngang / nga tu (tu 4/5 mat tro len)
+#define SHARP_TURN_THRESHOLD         1.4f // Bat dau xoay gat khi lech tu ~1.4 buoc mat (mat ngoai S1/S5)
+#define SHARP_TURN_EXIT_THRESHOLD    0.5f // Thoat xoay khi line ve gan tam S3
+#define LINE_SEARCH_TIMEOUT_MS       750  // Dung dong co neu chua tim thay line
+
+#define PID_KP                  62.0f // PWM tren moi buoc lech cam bien (5 mat thang do -2..+2)
+#define PID_KD                  24.0f // He so vi phan quy ve chu ky lay mau danh dinh
+#define LINE_ERROR_FILTER_ALPHA  0.45f
+#define LINE_CURVE_SPEED_DROP   24.0f // Giam PWM co ban khi vao cua
+#else
 #define SENSORS_CROSS_LINE_THRESHOLD 6    // Nguong nhan dien vach ngang / nga tu (tu 6 mat tro len)
 #define SHARP_TURN_THRESHOLD         2.5f // 2.5 buoc mat doc (15 mm voi buoc 6 mm) de bat dau xoay
 #define SHARP_TURN_EXIT_THRESHOLD    1.0f // 1.0 buoc mat doc (6 mm) de thoat xoay
@@ -141,6 +165,7 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 #define PID_KD                  18.0f // He so vi phan quy ve chu ky lay mau danh dinh
 #define LINE_ERROR_FILTER_ALPHA  0.45f
 #define LINE_CURVE_SPEED_DROP   16.0f // Giam PWM co ban tren moi buoc lech cam bien
+#endif
 
 // ==============================================================================
 // 3. THONG SO HINH HOC CO KHI & DELAY CANH BAO (LOOK-AHEAD DELAY CHO CUC LY 4CM)
@@ -190,6 +215,6 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 // ==============================================================================
 // 4. CAU HINH BLUETOOTH LOW ENERGY (BLUEFRUIT BLE)
 // ==============================================================================
-#define BLE_DEVICE_NAME "xe dò line"
+#define BLE_DEVICE_NAME "xe dò line 9"
 
 #endif // CONFIG_H

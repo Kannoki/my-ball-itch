@@ -15,8 +15,8 @@ void servo1_init() {
     // Dua ve vi tri trung tam (Neutral 1500us)
     servo1_setMicroseconds(1500);
 
-    Serial.printf("[Servo 1 - TD8120MG] Khoi tao GPIO 14 | Xung: %d-%dus | Goc Max: %d do | Neutral: %dus\n",
-                  SERVO1_MIN_PULSE_US, SERVO1_MAX_PULSE_US, SERVO1_MAX_ANGLE, currentMicroseconds1);
+    Serial.printf("[Servo 1 - TD8120MG] Khoi tao GPIO %d | Xung: %d-%dus | Goc Max: %d do | Neutral: %dus\n",
+                  PIN_SERVO_1, SERVO1_MIN_PULSE_US, SERVO1_MAX_PULSE_US, SERVO1_MAX_ANGLE, currentMicroseconds1);
 }
 
 void servo1_setMicroseconds(int us) {
