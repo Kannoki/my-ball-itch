@@ -25,10 +25,22 @@ enum EdgeMode {
 
 // ==============================================================================
 // 1. CAU HINH CHAN DIEU KHIEN DONG CO L298N (4 DONG CO)
+// ==============================================================================
+#ifdef BOARD_ESP32_38PIN
+// Cau hinh chan an toan cho ESP32 38-pin (tranh GPIO 6-11 Flash, GPIO 1/3 UART0, GPIO 12 strapping)
+// Kenh ben PHAI (OUT1 & OUT2)
+#define PIN_MOTOR_RIGHT_ENA 32  // PWM dieu khien toc do ben phai (OUT1, OUT2)
+#define PIN_MOTOR_RIGHT_IN1 33  // Huong quay phai 1
+#define PIN_MOTOR_RIGHT_IN2 25  // Huong quay phai 2
+
+// Kenh ben TRAI (OUT3 & OUT4)
+#define PIN_MOTOR_LEFT_IN3  26  // Huong quay trai 1
+#define PIN_MOTOR_LEFT_IN4  27  // Huong quay trai 2
+#define PIN_MOTOR_LEFT_ENB  14  // PWM dieu khien toc do ben trai (OUT3, OUT4)
+#else
 // LM2596 cap 5 V cho ESP32-S3, Servo 2 va Servo 3. Servo 1 lay nguon truc tiep tu pin 2S 7.4 V.
 // 2 dong co ben TRÁI: OUT3 & OUT4 (ENB: GPIO 13, IN3: GPIO 11, IN4: GPIO 12)
 // 2 dong co ben PHẢI: OUT1 & OUT2 (ENA: GPIO 8,  IN1: GPIO 9,  IN2: GPIO 10)
-// ==============================================================================
 // Kenh ben PHAI (OUT1 & OUT2)
 #define PIN_MOTOR_RIGHT_ENA 8   // PWM dieu khien toc do ben phai (OUT1, OUT2)
 #define PIN_MOTOR_RIGHT_IN1 9   // Huong quay phai 1
@@ -38,6 +50,7 @@ enum EdgeMode {
 #define PIN_MOTOR_LEFT_IN3  11  // Huong quay trai 1
 #define PIN_MOTOR_LEFT_IN4  12  // Huong quay trai 2
 #define PIN_MOTOR_LEFT_ENB  13  // PWM dieu khien toc do ben trai (OUT3, OUT4)
+#endif
 
 // Thong so PWM cho ESP32-S3
 #define PWM_FREQ        10000 // 10 kHz (em tieng dong co)
@@ -67,11 +80,31 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 
 // ==============================================================================
 // 2. CAU HINH CHAN CAM BIEN DO LINE (8 SENSORS)
-// Thong so vat ly: Line den 1.6 cm, khoang cach tu mat doc xuong san 1 mm (0.1 cm)
+// Thong so vat ly: Line den rong 16 mm, mat doc cach san 0.5 mm, buoc tam 2 mat lien ke 6 mm (tong dai 42 mm).
 // Khoang cach tu mat doc sensor den truc 2 banh truoc la 4.0cm
 // ==============================================================================
-#define NUM_SENSORS 8
+#define NUM_SENSORS       8
+#define SENSOR_HEIGHT_MM  0.5f  // Khoang cach tu mat doc sensor xuong mat dat (0.5 mm)
+#define SENSOR_PITCH_MM   6.0f  // Khoang cach giua 2 mat doc lien ke (6 mm)
+#define LINE_WIDTH_MM     16.0f // Be ngang vach line den (16 mm)
 
+#ifdef BOARD_ESP32_38PIN
+// Day chan cam bien IR 8 mat cho ESP32 38-pin (cum GPIO ben phai, ho tro INPUT & INPUT_PULLUP)
+#define PIN_LINE_S1     23  // Cam bien ngoai cung ben trai
+#define PIN_LINE_S2     22
+#define PIN_LINE_S3     21
+#define PIN_LINE_S4     19  // Cam bien giua trai
+#define PIN_LINE_S5     18  // Cam bien giua phai
+#define PIN_LINE_S6     5
+#define PIN_LINE_S7     17
+#define PIN_LINE_S8     16  // Cam bien ngoai cung ben phai
+
+#ifdef SENSOR_PHOTORESISTOR
+#define PIN_LINE_IR_EN  -1  // Thanh quang tro khong co chan IR Enable
+#else
+#define PIN_LINE_IR_EN  4   // GPIO 4 xuat HIGH bat den IR (tranh GPIO 1 TX0 cua ESP32 38-pin)
+#endif
+#else
 #define PIN_LINE_S1     4   // Cam bien ngoai cung ben trai
 #define PIN_LINE_S2     5
 #define PIN_LINE_S3     6
@@ -86,18 +119,21 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 // - Neu de trong chan nay: 8 den phat bi TAT HOAN TOAN -> khong co tia phan xa -> cam bien bao FULL DEN!
 // - Cach dau: Co the noi truc tiep vao VCC (5V/3.3V), hoac noi vao GPIO 1 (ESP32-S3 se tu xuat HIGH)
 #define PIN_LINE_IR_EN  1   // GPIO 1 xuat HIGH bat den IR (hoac noi thang chan nay vao VCC)
+#endif
 
 // Muc logic khi cam bien phat hien vach line den:
-// - Tren thanh 8 mat (nhu HY-S301 / TCRT5000):
-//   + Nen TRANG phan xa tia hong ngoai manh -> chan tin hieu xuat muc HIGH (1)
-//   + Vach DEN hap thu tia hong ngoai khong phan xa -> chan tin hieu xuat muc LOW (0)
-// - Do do, vach DEN tuong ung voi muc logic LOW (0)!
+// - Thanh IR 8 mat (HY-S301 / TCRT5000): vach DEN -> LOW (0), nen TRANG -> HIGH (1)
+// - Thanh quang tro (LDR) 8 mat: thuong vach DEN -> HIGH (1), nen TRANG -> LOW (0)
+#ifdef SENSOR_PHOTORESISTOR
+#define LINE_ACTIVE_STATE HIGH
+#else
 #define LINE_ACTIVE_STATE LOW
+#endif
 
 // Nguong phan loai cho goc cua gat (khi mep bien chay ra vung mat ngoai cung S2/S1 hoac S7/S8)
 #define SENSORS_CROSS_LINE_THRESHOLD 6    // Nguong nhan dien vach ngang / nga tu (tu 6 mat tro len)
-#define SHARP_TURN_THRESHOLD         2.5f // Chi xoay khi mep nam on dinh gan mat ngoai
-#define SHARP_TURN_EXIT_THRESHOLD    1.0f // Thoat xoay khi mep tro ve gan tam
+#define SHARP_TURN_THRESHOLD         2.5f // 2.5 buoc mat doc (15 mm voi buoc 6 mm) de bat dau xoay
+#define SHARP_TURN_EXIT_THRESHOLD    1.0f // 1.0 buoc mat doc (6 mm) de thoat xoay
 #define LINE_SEARCH_TIMEOUT_MS       750  // Dung dong co neu chua tim thay vien
 
 // He so PID toi uu cho bam vien va be lai dut khoat
@@ -124,9 +160,15 @@ constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR
 // ==============================================================================
 // 4. CAU HINH CHAN TIN HIEU CHO 3 SERVO (CHAY DOC LAP)
 // ==============================================================================
+#ifdef BOARD_ESP32_38PIN
+#define PIN_SERVO_1     13  // Chan tin hieu Servo 1: TD-8120MG
+#define PIN_SERVO_2     15  // Chan tin hieu Servo 2
+#define PIN_SERVO_3     2   // Chan tin hieu Servo 3 (GPIO 47 khong co tren ESP32 38-pin)
+#else
 #define PIN_SERVO_1     14  // Chan tin hieu Servo 1: TD-8120MG (20KG High Torque - Co cau day hanh trinh)
 #define PIN_SERVO_2     21  // Chan tin hieu Servo 2 (GPIO 21)
 #define PIN_SERVO_3     47  // Chan tin hieu Servo 3 (GPIO 47)
+#endif
 
 // Thong so chuan Datasheet cho Servo TD-8120MG tren CHAN GPIO 14 (20kg.cm Digital Metal Gear)
 // Pulse Width Range: 500us -> 2500us (Trung tam Neutral: 1500us)

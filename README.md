@@ -151,7 +151,7 @@ pio device monitor -b 115200
 
      - `R:11000011`: Mức logic điện áp thực tế đọc từ 8 chân GPIO (S1..S8).
      - `[..####..]`: Trạng thái giải mã trực quan (`#` = Vạch đen, `.` = Nền trắng).
-     - `E:+0.0`: Vị trí mép viền gần tâm trong mẫu hiển thị (-3.0 đến +3.0). Các mẫu khác có thể báo `ALL_WHITE`, `ALL_BLACK`, `CROSS` hoặc `NO_EDGE`.
+     - `E:+0.0`: Vị trí mép viền gần tâm trong mẫu hiển thị (`-3.0` đến `+3.0` theo bước mắt **6 mm**, tương ứng `-18 mm` đến `+18 mm`). Các mẫu khác có thể báo `ALL_WHITE`, `ALL_BLACK`, `CROSS` hoặc `NO_EDGE`.
    - **Các lệnh tương tác nhanh (gõ vào ô gửi văn bản trong tab UART):**
      - `?` hoặc `H`: Trả về báo cáo chẩn đoán chi tiết từng chân GPIO, mức điện áp, logic hiện hành.
      - `I`: Đảo mức logic bắt vạch đen (`HIGH` <-> `LOW`). Dùng ngay khi mắt đọc nhận diện ngược.
@@ -172,5 +172,5 @@ pio device monitor -b 115200
 
 - Mỗi bên động cơ nhận ít nhất `245/255` trong 120 ms đầu khi khởi hành, sau đó về PWM được yêu cầu với sàn `165/255`. Tốc độ bám viền cơ bản là `185/255` và chế độ tay là `220/255`. Các mức này nằm trong `include/config.h`.
 - Kê bánh lên khỏi sàn và thử nhấn mũi tên lên trong Standby. Nếu bánh vẫn đứng và động cơ chỉ kêu, thả nút rồi kiểm tra bánh hoặc hộp số bị kẹt, điện áp tại cọc cấp nguồn L298N lúc đề-pa và chiều quay của hai bánh trên mỗi bên.
-- Mắt đọc cách sàn **1 mm (0,1 cm)**. Kiểm tra thanh cảm biến không cạ sàn, rồi đặt mép vạch giữa S4 và S5. Dùng `V` để chọn đúng phía màu đen và `I` nếu trạng thái `#` và `.` trong app bị đảo. Khi mất viền, xe tìm lại tối đa 750 ms rồi dừng. Xe tiếp tục khi cảm biến thấy lại mép hợp lệ.
+- Mắt đọc cách sàn **0,5 mm**, khoảng cách giữa hai mắt đọc liền kề **6 mm** (tổng dãy 8 mắt dài **42 mm**), bề ngang vạch đen **16 mm**. Kiểm tra thanh cảm biến không cạ sàn, rồi đặt mép vạch giữa S4 và S5. Dùng `V` để chọn đúng phía màu đen và `I` nếu trạng thái `#` và `.` trong app bị đảo. Khi mất viền, xe tìm lại tối đa 750 ms rồi dừng. Xe tiếp tục khi cảm biến thấy lại mép hợp lệ.
 - Kiểm tra hướng rẽ bằng hai nút **←** và **→** trong Standby. Khi đưa vạch đen vào hai mắt ngoài cùng bên trái, dãy cảm biến trong UART sẽ hiện `[##......]`. Nếu chỉ còn thấy mép ngược với chế độ bám viền đã chọn, xe tìm về phía còn thấy màu đen.

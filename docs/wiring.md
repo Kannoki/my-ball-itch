@@ -96,6 +96,11 @@ Nếu dây bên trái đã vào `OUT1/OUT2` và dây bên phải vào `OUT3/OUT4
 
 ### 3.2. Đấu nối Thanh Cảm Biến Dò Line 8 Mắt (8 Sensor Array)
 
+> Tài liệu đấu nối riêng theo từng combo phần cứng:
+> - **ESP32-S3 + Cảm biến IR 8 mắt:** [docs/wiring-s3-ir.md](wiring-s3-ir.md)
+> - **ESP32 38-pin + Cảm biến IR 8 mắt:** [docs/wiring-esp32-ir.md](wiring-esp32-ir.md)
+> - **ESP32 38-pin + Cảm biến Quang trở 8 mắt:** [docs/wiring-esp32-photores.md](wiring-esp32-photores.md)
+
 Thanh cảm biến xếp từ trái sang phải: `S1 -> S2 -> S3 -> S4 -> S5 -> S6 -> S7 -> S8`.
 
 | Chân Cảm biến | Chân ESP32-S3 | Vị trí / Ý nghĩa |
@@ -126,6 +131,16 @@ Thanh cảm biến xếp từ trái sang phải: `S1 -> S2 -> S3 -> S4 -> S5 -> 
 > ```cpp
 > #define LINE_ACTIVE_STATE HIGH
 > ```
+
+#### Kích thước lắp đặt & hình học thanh cảm biến
+
+- **Khoảng cách từ cảm biến xuống mặt sàn:** `0,5 mm` (lưu ý lắp song song mặt sàn để tránh cạ xuống đường chạy).
+- **Khoảng cách giữa các mắt đọc (bước tâm–tâm):** `6 mm` (tổng khoảng cách từ tâm `S1` đến tâm `S8` là `42 mm`).
+- **Bề ngang vạch line đen:** `16 mm`.
+
+| Mắt từ trái sang phải | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Vị trí tâm mắt so với tâm dãy (mm) | −21 | −15 | −9 | −3 | +3 | +9 | +15 | +21 |
 
 ---
 

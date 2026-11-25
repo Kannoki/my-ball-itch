@@ -48,14 +48,17 @@ uint8_t readDirectGpioPins() {
     return direct;
 }
 
-static bool irEmitterState = true;
+static bool irEmitterState = (PIN_LINE_IR_EN >= 0);
 
 void setSensorIrEmitter(bool enable) {
-    irEmitterState = enable;
 #if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
+    irEmitterState = enable;
     pinMode(PIN_LINE_IR_EN, OUTPUT);
     digitalWrite(PIN_LINE_IR_EN, enable ? HIGH : LOW);
     Serial.printf("[Sensor] Chan IR Enable (GPIO %d) -> %s\n", PIN_LINE_IR_EN, enable ? "HIGH (BAT 8 LED PHAT)" : "LOW (TAT 8 LED PHAT)");
+#else
+    (void)enable;
+    irEmitterState = false;
 #endif
 }
 
@@ -66,10 +69,16 @@ bool isSensorIrEmitterEnabled() {
 void lineSensorInit() {
     setSensorIrEmitter(true);
     setSensorPullup(sensorPullupEnabled);
+#if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
     Serial.printf("[Sensor] Khoi tao 8 mat do line! IR Enable: GPIO %d (HIGH) | Tro keo: %s | Muc bat vach den: %s\n",
                   PIN_LINE_IR_EN,
                   sensorPullupEnabled ? "INPUT_PULLUP" : "INPUT",
                   (lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)");
+#else
+    Serial.printf("[Sensor] Khoi tao 8 mat quang tro! IR Enable: KHONG DUNG | Tro keo: %s | Muc bat vach den: %s\n",
+                  sensorPullupEnabled ? "INPUT_PULLUP" : "INPUT",
+                  (lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)");
+#endif
 }
 
 static uint8_t decodeSensorPins(uint8_t pins) {
@@ -211,7 +220,7 @@ String getSensorTelemetryDetailed() {
     uint8_t raw = decodeSensorPins(directPins);
 
     String s = "\n=== 8-SENSOR DIAGNOSTIC ===\n";
-    s += "Pins: S1(4) S2(5) S3(6) S4(7) S5(15) S6(16) S7(17) S8(18)\n";
+    s += "Pins: S1(" + String(PIN_LINE_S1) + ") S2(" + String(PIN_LINE_S2) + ") S3(" + String(PIN_LINE_S3) + ") S4(" + String(PIN_LINE_S4) + ") S5(" + String(PIN_LINE_S5) + ") S6(" + String(PIN_LINE_S6) + ") S7(" + String(PIN_LINE_S7) + ") S8(" + String(PIN_LINE_S8) + ")\n";
     s += "GPIO:  ";
     for (int i = 0; i < NUM_SENSORS; i++) {
         s += String((directPins & (1 << i)) ? "1" : "0") + "     ";
@@ -222,7 +231,11 @@ String getSensorTelemetryDetailed() {
     }
     s += "\n(# = Vach den, . = Nen trang)\n";
     s += "Logic : Vach den = " + String((lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)") + " [Bam 'I' de dao]\n";
-    s += "IR LED: " + String(isSensorIrEmitterEnabled() ? "BAT (GPIO 1 = HIGH)" : "TAT (GPIO 1 = LOW)") + " [Bam 'E' de bat/tat]\n";
+#if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
+    s += "IR LED: " + String(isSensorIrEmitterEnabled() ? "BAT (GPIO " : "TAT (GPIO ") + String(PIN_LINE_IR_EN) + (isSensorIrEmitterEnabled() ? " = HIGH)" : " = LOW)") + " [Bam 'E' de bat/tat]\n";
+#else
+    s += "IR LED: KHONG DUNG (Cam bien quang tro)\n";
+#endif
     s += "Pullup: " + String(sensorPullupEnabled ? "BAT (INPUT_PULLUP)" : "TAT (INPUT)") + " [Bam 'P' de dao]\n";
     s += "Vien  : " + String(getEdgeFollowModeName()) + " [Bam 'V' de doi]\n";
     s += "Status: " + getSensorStatus(raw) + "\n";
