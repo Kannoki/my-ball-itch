@@ -18,14 +18,14 @@ enum EdgeMode {
     EDGE_WHITE_LEFT_BLACK_RIGHT = 0, // Ben trai la Trang (0), ben phai la Den (1): chuyen tiep 0 -> 1
     EDGE_BLACK_LEFT_WHITE_RIGHT = 1, // Ben trai la Den (1), ben phai la Trang (0): chuyen tiep 1 -> 0
     EDGE_AUTO                   = 2, // Tu dong tim ranh gioi mep bien gan tam nhat
-    EDGE_CENTER_LINE            = 3  // Bam giua vach den (phu hop thanh 5 mat TCRT5000 2D4.1)
+    EDGE_CENTER_LINE            = 3  // Bam giua vach den (IR 8 mat va TCRT5000 5 mat)
 };
 
-// Mac dinh: Bam giua vach voi TCRT5000 5 mat, bam vien trai voi thanh 8 mat
-#ifdef SENSOR_TCRT5000_5CH
-#define EDGE_FOLLOW_MODE EDGE_CENTER_LINE
-#else
+// IR 8 mat bam tam line ~20 mm bang S4/S5; quang tro giu che do bam vien.
+#ifdef SENSOR_PHOTORESISTOR
 #define EDGE_FOLLOW_MODE EDGE_WHITE_LEFT_BLACK_RIGHT
+#else
+#define EDGE_FOLLOW_MODE EDGE_CENTER_LINE
 #endif
 
 // ==============================================================================
@@ -74,6 +74,7 @@ enum EdgeMode {
 // nen runTurnLeft LUON xoay sang trai du doi mau chan hay kiem tra chan.
 #define MOTOR_SPEED_SCALE        1000  // Gia tri toi da cua van toc do chuan hoa
 #define MOTOR_SPEED_STEP          40   // Buoc tang/giam khi lenh '+'/'-' qua BLE (~10/255)
+#define MOTOR_OUTPUT_PERCENT      50   // Giam con 1/2 PWM thuc te, ke ca de-pa va lenh quay
 
 // Van toc do mac dinh (don vi chuan hoa)
 #define MOTOR_BASE_SPEED         725   // ~185/255 : toc do co ban khi di thang
@@ -135,9 +136,24 @@ enum EdgeMode {
 #define NUM_SENSORS       8
 #define SENSOR_HEIGHT_MM  0.5f  // Khoang cach tu mat doc sensor xuong mat dat (0.5 mm)
 #define SENSOR_PITCH_MM   6.0f  // Khoang cach giua 2 mat doc lien ke (6 mm)
-#define LINE_WIDTH_MM     16.0f // Be ngang vach line den (16 mm)
+#ifdef SENSOR_PHOTORESISTOR
+#define LINE_WIDTH_MM     16.0f
+#else
+#define LINE_WIDTH_MM     20.0f // Be ngang line tren san IR hien tai (~20 mm)
+#endif
 #endif
 #define SENSOR_MASK       static_cast<uint8_t>((1U << NUM_SENSORS) - 1U)
+
+// Van doc du NUM_SENSORS; mask chi ap dung khi tinh line. Nhan cross IR dung du 8 mat.
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+#define LINE_TRACKING_MASK       static_cast<uint8_t>(0x5A) // S2, S4, S5, S7 (danh so 1..8)
+#define LINE_TRACKING_FIRST_BIT  static_cast<uint8_t>(0x02) // S2
+#define LINE_TRACKING_MAX_POS    2.5f
+#else
+#define LINE_TRACKING_MASK       SENSOR_MASK
+#define LINE_TRACKING_FIRST_BIT  static_cast<uint8_t>(0x01)
+#define LINE_TRACKING_MAX_POS    ((NUM_SENSORS - 1) * 0.5f)
+#endif
 
 #ifdef BOARD_ESP32_38PIN
 // Day chan cam bien cho ESP32 38-pin (cum GPIO ben phai, ho tro INPUT & INPUT_PULLUP)
@@ -175,12 +191,13 @@ enum EdgeMode {
 #endif
 
 // Muc logic khi cam bien phat hien vach line den:
-// - Thanh IR 8 mat & TCRT5000 2D4.1: vach DEN -> LOW (0), nen TRANG -> HIGH (1)
-// - Thanh quang tro (LDR) 8 mat: thuong vach DEN -> HIGH (1), nen TRANG -> LOW (0)
-#ifdef SENSOR_PHOTORESISTOR
-#define LINE_ACTIVE_STATE HIGH
-#else
+// - IR 8 mat dang dung: da do GPIO 00000000 tren nen trang -> LOW la nen, HIGH la line.
+// - Quang tro (LDR) 8 mat: mac dinh vach DEN -> HIGH (1).
+// - TCRT5000 2D4.1 giu mac dinh LOW; dung lenh I de dao neu phan cung khac.
+#ifdef SENSOR_TCRT5000_5CH
 #define LINE_ACTIVE_STATE LOW
+#else
+#define LINE_ACTIVE_STATE HIGH
 #endif
 
 // Nguong phan loai cho goc cua gat & he so PID theo so mat cam bien
@@ -196,7 +213,11 @@ enum EdgeMode {
 #define LINE_CURVE_SPEED_DROP   24.0f // Giam PWM co ban khi vao cua
 #else
 #define SENSORS_CROSS_LINE_THRESHOLD 6    // Nguong nhan dien vach ngang / nga tu (tu 6 mat tro len)
+#ifdef SENSOR_PHOTORESISTOR
 #define SHARP_TURN_THRESHOLD         2.5f // 2.5 buoc mat doc (15 mm voi buoc 6 mm) de bat dau xoay
+#else
+#define SHARP_TURN_THRESHOLD        1.25f // Mep giua S2/S4 va S5/S7 o +/-1.5, chua tru bo loc
+#endif
 #define SHARP_TURN_EXIT_THRESHOLD    1.0f // 1.0 buoc mat doc (6 mm) de thoat xoay
 #define LINE_SEARCH_TIMEOUT_MS       750  // Dung dong co neu chua tim thay vien
 

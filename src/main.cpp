@@ -20,6 +20,8 @@ struct LineTrackingState {
     bool hasPreviousError = false;
     bool sharpTurn = false;
     int searchDirection = 0;
+    bool crossing = false;
+    unsigned long crossStartedAt = 0;
 };
 
 static LineTrackingState tracking;
@@ -80,7 +82,7 @@ static void searchForLine(uint8_t raw, unsigned long now, int baseSpeedPwm) {
         if (fabsf(tracking.lastEdge.position) >= 1.0f) {
             tracking.searchDirection = tracking.lastEdge.position < 0.0f ? -1 : 1;
         } else if ((polarity == EDGE_WHITE_LEFT_BLACK_RIGHT || polarity == EDGE_BLACK_LEFT_WHITE_RIGHT) &&
-                   (raw == 0x00 || raw == SENSOR_MASK)) {
+                   (raw == 0x00 || raw == LINE_TRACKING_MASK)) {
             const bool whiteOnLeft = polarity == EDGE_WHITE_LEFT_BLACK_RIGHT;
             const bool onWhite = raw == 0x00;
             tracking.searchDirection = (onWhite == whiteOnLeft) ? 1 : -1;
@@ -90,8 +92,8 @@ static void searchForLine(uint8_t raw, unsigned long now, int baseSpeedPwm) {
     }
 
     // Mau tron chi con mep nguoc chieu: tim ve phia cac mat dang thay den.
-    if (raw != 0x00 && raw != SENSOR_MASK) {
-        tracking.searchDirection = (raw & 0x01) ? -1 : 1;
+    if (raw != 0x00 && raw != LINE_TRACKING_MASK) {
+        tracking.searchDirection = (raw & LINE_TRACKING_FIRST_BIT) ? -1 : 1;
     }
 
     if (now - tracking.lostAt >= LINE_SEARCH_TIMEOUT_MS) {
@@ -136,6 +138,10 @@ static void processLineTracking() {
     tracking.sampledAt = now;
 
     const uint8_t raw = readRawSensors();
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    // Hai mau lien tiep phai cung toan black, tranh ghep 8 bit tu cac mau khac nhau thanh cross gia.
+    const bool allBlack = isCrossLinePattern(raw) && isCrossLinePattern(tracking.previousRaw);
+#endif
     // Moi bit can xuat hien trong it nhat hai trong ba mau.
     const uint8_t filteredRaw = (raw & tracking.previousRaw) |
                                 (raw & tracking.olderRaw) |
@@ -148,12 +154,44 @@ static void processLineTracking() {
     }
 
     const int baseSpeedPwm = motorBaseSpeed > 0 ? speedToPwm(motorBaseSpeed) : MOTOR_BASE_SPEED_PWM;
-    LineEdge edge;
-    if (!findLineEdge(filteredRaw, mode, tracking.lastEdge.position, edge)) {
-        searchForLine(filteredRaw, now, baseSpeedPwm);
+    const uint8_t lineRaw = filteredRaw & LINE_TRACKING_MASK;
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    if (allBlack && !tracking.crossing) {
+        tracking.crossing = true;
+        tracking.crossStartedAt = now;
+        tracking.hasPreviousError = false;
+        tracking.sharpTurn = false;
+        tracking.searchDirection = 0;
+    }
+    if (tracking.crossing) {
+        // Chi di thang mot nhip co gioi han. Khong khoi dong lai nhip khi cross van con.
+        if (now - tracking.crossStartedAt < CROSS_LINE_PASS_DELAY_MS) {
+            runForward(pwmToSpeed(min(baseSpeedPwm, MOTOR_BASE_SPEED_PWM)));
+            return;
+        }
+        if (allBlack) {
+            stopMotion();
+            return;
+        }
+    }
+#endif
+
+    // Khong dieu khien theo mau da phan loai mo ho; -#-..-#- la ngoai le can tam hop le.
+    if (isLineSampleAmbiguous(lineRaw)) {
+        stopMotion();
+        tracking.hasPreviousError = false;
+        tracking.sharpTurn = false;
+        tracking.searchDirection = 0;
         return;
     }
 
+    LineEdge edge;
+    if (!findLineEdge(lineRaw, mode, tracking.lastEdge.position, edge)) {
+        searchForLine(lineRaw, now, baseSpeedPwm);
+        return;
+    }
+
+    tracking.crossing = false;
     tracking.searchDirection = 0;
     tracking.lastEdge = edge;
 

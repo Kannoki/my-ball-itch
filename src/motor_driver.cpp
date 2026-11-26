@@ -9,6 +9,7 @@ static_assert(MOTOR_MIN_PWM_LEFT > 0 && MOTOR_MIN_PWM_RIGHT > 0 &&
 static_assert(MOTOR_START_PWM > 0 && MOTOR_START_PWM <= 255, "Invalid motor startup boost");
 static_assert(MOTOR_START_MS > 0 && MOTOR_RAMP_MS > 0, "Invalid motor timing");
 static_assert(MOTOR_ARC_INNER_RATIO > 0 && MOTOR_ARC_INNER_RATIO < 100, "Invalid arc ratio");
+static_assert(MOTOR_OUTPUT_PERCENT > 0 && MOTOR_OUTPUT_PERCENT <= 100, "Invalid motor output scale");
 
 // ------------------------------------------------------------------------------
 // Trang thai toc do chuan hoa
@@ -110,11 +111,17 @@ static std::mutex motorMutex;
 // ------------------------------------------------------------------------------
 // Ghi PWM / GPIO
 // ------------------------------------------------------------------------------
+static int motorOutputDuty(int duty) {
+    return (constrain(duty, 0, 255) * MOTOR_OUTPUT_PERCENT) / 100;
+}
+
 static void writeMotorPwm(const MotorChannel& motor, int duty) {
+    // Scale sau min PWM/dead-band/de-pa de khong bi cac nguong nay day toc do len lai.
+    const int outputDuty = motorOutputDuty(duty);
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
-    ledcWrite(motor.pwmPin, duty);
+    ledcWrite(motor.pwmPin, outputDuty);
 #else
-    ledcWrite(motor.pwmChannel, duty);
+    ledcWrite(motor.pwmChannel, outputDuty);
 #endif
 }
 
@@ -468,10 +475,11 @@ String getMotorDiagnostics() {
 
     s += "Base : " + String(motorBaseSpeed) + " (chuan hoa -" + String(MOTOR_SPEED_SCALE) +
          "..+" + String(MOTOR_SPEED_SCALE) + ")\n";
+    s += "Output: " + String(MOTOR_OUTPUT_PERCENT) + "% (PWM thuc te)\n";
 
     s += "\n-- BEN TRAI (OUT3/OUT4, ENB=GPIO " + String(PIN_MOTOR_LEFT_ENB) + ") --\n";
     s += "  lenh=" + String(channelB.commandedSpeed) + " dir=" + String(channelB.electricalDirection);
-    s += " duty=" + String(channelB.appliedDuty) + "/" + String(channelB.targetDuty);
+    s += " duty=" + String(motorOutputDuty(channelB.appliedDuty)) + "/" + String(motorOutputDuty(channelB.targetDuty));
     if (channelB.boosting) s += " [DEP-A]";
     s += "\n";
     s += "  IN3(GPIO " + String(PIN_MOTOR_LEFT_IN3) + ")=" + String(digitalRead(PIN_MOTOR_LEFT_IN3));
@@ -480,7 +488,7 @@ String getMotorDiagnostics() {
 
     s += "\n-- BEN PHAI (OUT1/OUT2, ENA=GPIO " + String(PIN_MOTOR_RIGHT_ENA) + ") --\n";
     s += "  lenh=" + String(channelA.commandedSpeed) + " dir=" + String(channelA.electricalDirection);
-    s += " duty=" + String(channelA.appliedDuty) + "/" + String(channelA.targetDuty);
+    s += " duty=" + String(motorOutputDuty(channelA.appliedDuty)) + "/" + String(motorOutputDuty(channelA.targetDuty));
     if (channelA.boosting) s += " [DEP-A]";
     s += "\n";
     s += "  IN1(GPIO " + String(PIN_MOTOR_RIGHT_IN1) + ")=" + String(digitalRead(PIN_MOTOR_RIGHT_IN1));

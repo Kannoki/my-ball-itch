@@ -100,7 +100,7 @@ uint8_t readRawSensors() {
 }
 
 float getLinePosition() {
-    uint8_t raw = readRawSensors();
+    uint8_t raw = readRawSensors() & LINE_TRACKING_MASK;
     float weightedSum = 0.0f;
     int activeCount = 0;
 
@@ -111,9 +111,9 @@ float getLinePosition() {
         }
     }
 
-    if (activeCount == 0) {
+    if (activeCount == 0 || isLineSampleAmbiguous(raw)) {
         lineCurrentlyLost = true;
-        const float maxWeight = (NUM_SENSORS - 1) * 0.5f;
+        const float maxWeight = LINE_TRACKING_MAX_POS;
         return (lastKnownPos > 0) ? maxWeight : -maxWeight;
     }
 
@@ -148,9 +148,36 @@ const char* getEdgeFollowModeName() {
     }
 }
 
+bool isLineSampleAmbiguous(uint8_t raw) {
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    raw &= LINE_TRACKING_MASK;
+    if (raw == LINE_TRACKING_MASK) return true;
+
+    // Mau thuc te -#-..-#-: S2/S7 active doi xung, S4/S5 inactive, van la di thang.
+    constexpr uint8_t centeredOuterPair = (1U << 1) | (1U << 6);
+    if (raw == centeredOuterPair) return false;
+
+    // Cac mau nhieu cum roi khac van can loai tru.
+    // Khong so sanh cac bit cua S1, S3, S6, S8 du chung co thay doi.
+    bool previousActive = false;
+    unsigned activeRuns = 0;
+    for (int i = 0; i < NUM_SENSORS; ++i) {
+        if (!(LINE_TRACKING_MASK & (1 << i))) continue;
+        const bool active = raw & (1 << i);
+        if (active && !previousActive) ++activeRuns;
+        previousActive = active;
+    }
+    return activeRuns > 1;
+#else
+    (void)raw;
+    return false;
+#endif
+}
+
 bool findLineEdge(uint8_t raw, uint8_t mode, float reference, LineEdge& edge) {
+    raw &= LINE_TRACKING_MASK;
+    if (raw == 0x00 || raw == LINE_TRACKING_MASK || isLineSampleAmbiguous(raw)) return false;
     if (mode == EDGE_CENTER_LINE) {
-        if (raw == 0x00 || raw == SENSOR_MASK) return false;
         float weightedSum = 0.0f;
         int activeCount = 0;
         for (int i = 0; i < NUM_SENSORS; i++) {
@@ -164,21 +191,24 @@ bool findLineEdge(uint8_t raw, uint8_t mode, float reference, LineEdge& edge) {
         return true;
     }
 
-    float minDiff = NUM_SENSORS;
+    float minDiff = 0.0f;
     bool found = false;
-    const float centerPairOffset = (NUM_SENSORS - 2) * 0.5f;
-
-    for (int i = 0; i < NUM_SENSORS - 1; i++) {
-        const bool blackLeft = raw & (1 << i);
-        const bool blackRight = raw & (1 << (i + 1));
+    int previousSensor = -1;
+    for (int i = 0; i < NUM_SENSORS; i++) {
+        if (!(LINE_TRACKING_MASK & (1 << i))) continue;
+        const int leftSensor = previousSensor;
+        previousSensor = i;
+        if (leftSensor < 0) continue;
+        const bool blackLeft = raw & (1 << leftSensor);
+        const bool blackRight = raw & (1 << i);
         if (blackLeft == blackRight) continue;
 
         const EdgeMode polarity = blackRight ? EDGE_WHITE_LEFT_BLACK_RIGHT : EDGE_BLACK_LEFT_WHITE_RIGHT;
         if (mode != EDGE_AUTO && mode != polarity) continue;
 
-        const float position = i - centerPairOffset;
+        const float position = (sensorWeights[leftSensor] + sensorWeights[i]) * 0.5f;
         const float distance = fabsf(position - reference);
-        if (distance < minDiff) {
+        if (!found || distance < minDiff) {
             minDiff = distance;
             edge = {position, polarity};
             found = true;
@@ -188,7 +218,7 @@ bool findLineEdge(uint8_t raw, uint8_t mode, float reference, LineEdge& edge) {
 }
 
 bool isAllWhite() {
-    return (readRawSensors() == 0x00);
+    return ((readRawSensors() & LINE_TRACKING_MASK) == 0x00);
 }
 
 bool isAllBlack() {
@@ -207,8 +237,17 @@ static bool hasManyBlackSensors(uint8_t raw) {
     return (count >= SENSORS_CROSS_LINE_THRESHOLD);
 }
 
+bool isCrossLinePattern(uint8_t raw) {
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    // S1/S3/S6/S8 chi tham gia nhan cross, khong tham gia dieu chinh huong bam line.
+    return (raw & SENSOR_MASK) == SENSOR_MASK;
+#else
+    return hasManyBlackSensors(raw);
+#endif
+}
+
 bool isCrossLine() {
-    return hasManyBlackSensors(readRawSensors());
+    return isCrossLinePattern(readRawSensors());
 }
 
 float getLastKnownPosition() {
@@ -216,17 +255,37 @@ float getLastKnownPosition() {
 }
 
 static String getSensorStatus(uint8_t raw) {
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    if (isCrossLinePattern(raw)) return "CROSS";
+    raw &= LINE_TRACKING_MASK;
+    if (raw == 0x00) return "NO_LINE";
+    if (isLineSampleAmbiguous(raw)) return "AMBIGUOUS";
+#else
     if (raw == 0x00) return "ALL_WHITE";
     if (raw == SENSOR_MASK) return "ALL_BLACK";
+#endif
 
     LineEdge edge;
     if (!findLineEdge(raw, edgeFollowMode, 0.0f, edge)) {
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+        return "NO_EDGE";
+#else
         return hasManyBlackSensors(raw) ? "CROSS" : "NO_EDGE";
+#endif
     }
 
     char edgeBuf[10];
     snprintf(edgeBuf, sizeof(edgeBuf), "E:%+.1f", edge.position);
     return String(edgeBuf);
+}
+
+static String getTrackingPattern(uint8_t raw) {
+    char pattern[NUM_SENSORS + 1];
+    for (int i = 0; i < NUM_SENSORS; ++i) {
+        pattern[i] = !(LINE_TRACKING_MASK & (1 << i)) ? '-' : (raw & (1 << i)) ? '#' : '.';
+    }
+    pattern[NUM_SENSORS] = '\0';
+    return String(pattern);
 }
 
 String getSensorTelemetryCompact() {
@@ -242,7 +301,7 @@ String getSensorTelemetryCompact() {
     directBuf[NUM_SENSORS] = '\0';
     lineBuf[NUM_SENSORS]   = '\0';
 
-    return "R:" + String(directBuf) + " [" + String(lineBuf) + "] " + getSensorStatus(raw) + "\n";
+    return "R:" + String(directBuf) + " [" + String(lineBuf) + "] U:" + getTrackingPattern(raw) + " " + getSensorStatus(raw) + "\n";
 }
 
 String getSensorTelemetryDetailed() {
@@ -263,8 +322,9 @@ String getSensorTelemetryDetailed() {
     for (int i = 0; i < NUM_SENSORS; i++) {
         s += String((raw & (1 << i)) ? "#" : ".") + "     ";
     }
-    s += "\n(# = Vach den, . = Nen trang)\n";
-    s += "Logic : Vach den = " + String((lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)") + " [Bam 'I' de dao]\n";
+    s += "\nUse: " + getTrackingPattern(raw) + "\n";
+    s += "(#=active, .=inactive, -=skip)\n";
+    s += "Logic : Active = " + String((lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)") + " ['I'=dao]\n";
 #if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
     s += "IR LED: " + String(isSensorIrEmitterEnabled() ? "BAT (GPIO " : "TAT (GPIO ") + String(PIN_LINE_IR_EN) + (isSensorIrEmitterEnabled() ? " = HIGH)" : " = LOW)") + " [Bam 'E' de bat/tat]\n";
 #else
@@ -273,7 +333,7 @@ String getSensorTelemetryDetailed() {
     s += "Pullup: " + String(sensorPullupEnabled ? "BAT (INPUT_PULLUP)" : "TAT (INPUT)") + " [Bam 'P' de dao]\n";
     s += "Vien  : " + String(getEdgeFollowModeName()) + " [Bam 'V' de doi]\n";
     s += "Status: " + getSensorStatus(raw) + "\n";
-    s += "Lenh  : 1=Start/Stop, V=Doi vien, +/-=Speed, I=Dao logic, E=IR, ?=Help\n";
+    s += "Cmd: 1,V,+/-,I,E,P,T,?\n";
     s += "===========================\n";
     return s;
 }
@@ -292,8 +352,8 @@ void printSensorDebug() {
     lineBuf[NUM_SENSORS] = '\0';
 
     String status = getSensorStatus(raw);
-    Serial.printf("[Sensor] GPIO: %s | Line: [%s] | Active=%s | Pullup=%s | Status: %s\n",
-                  pinBuf, lineBuf, (lineActiveState == HIGH) ? "HIGH" : "LOW",
+    Serial.printf("[Sensor] GPIO: %s | Raw: [%s] | Use: [%s] | Active=%s | Pullup=%s | Status: %s\n",
+                  pinBuf, lineBuf, getTrackingPattern(raw).c_str(), (lineActiveState == HIGH) ? "HIGH" : "LOW",
                   sensorPullupEnabled ? "PULLUP" : "FLOAT",
                   status.c_str());
 }
