@@ -241,10 +241,10 @@ static void processLineTracking() {
         stopMotion();
         return;
     }
-    if (now - tracking.sampledAt < PID_SAMPLE_INTERVAL_MS) return;
+    if (now - tracking.sampledAt < LINE_SAMPLE_INTERVAL_MS) return;
     tracking.sampledAt = now;
     updateLineTracking(readRawSensors(), now, speedToPwm(motorBaseSpeed));
-    runLR(pwmToSpeed(getLineLeftPwm()), pwmToSpeed(getLineRightPwm()), MOTOR_OUTPUT_PERCENT);
+    runLR(pwmToSpeed(getLineLeftPwm()), pwmToSpeed(getLineRightPwm()), MOTOR_OUTPUT_PERCENT, true);
 #else
     // Cac combo khac giu thuat toan cua recovery trong thu nghiem nay.
     processLegacyLineTracking();

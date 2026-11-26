@@ -356,7 +356,7 @@ static void updateMotorChannel(MotorChannel& motor, int speed, bool invert,
 // ------------------------------------------------------------------------------
 // API DIEU KHIEN CHINH
 // ------------------------------------------------------------------------------
-void runLR(int vL, int vR, int powerPercent) {
+void runLR(int vL, int vR, int powerPercent, bool immediate) {
     vL = constrain(vL, -MOTOR_SPEED_SCALE, MOTOR_SPEED_SCALE);
     vR = constrain(vR, -MOTOR_SPEED_SCALE, MOTOR_SPEED_SCALE);
 
@@ -384,6 +384,26 @@ void runLR(int vL, int vR, int powerPercent) {
                         runtimeConfig.deadbandLeft, runtimeConfig.minPwmLeft, now);
     updateMotorChannel(*rightChannel, vR, runtimeConfig.invertRight,
                         runtimeConfig.deadbandRight, runtimeConfig.minPwmRight, now);
+
+    if (immediate) {
+        // Auto can quay/dung ngay khi sensor thay goc. Lenh tay van de-pa/ramp nhu cu.
+        auto applyNow = [now](MotorChannel& motor) {
+            motor.boosting = false;
+            const int direction = motor.targetDuty == 0 ? 0 : motor.commandedDirection;
+            if (direction != motor.electricalDirection) {
+                writeMotorPwm(motor, 0);
+                writeDirectionPins(motor, direction);
+                motor.electricalDirection = direction;
+            }
+            motor.appliedDuty = motor.targetDuty;
+            motor.rampAccum = motor.appliedDuty * 1000;
+            motor.lastRampAt = now;
+            writeMotorPwm(motor, motor.appliedDuty);
+        };
+        applyNow(*leftChannel);
+        applyNow(*rightChannel);
+        return;
+    }
 
     // Ramp ngay neu vua lenh (neu chay o che do do line, motorDriverUpdate se lo phan ramp)
     rampMotorChannel(channelB, now);

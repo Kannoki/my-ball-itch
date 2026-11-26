@@ -19,18 +19,18 @@ Xem hướng dẫn nguồn điện (Pin 2S 7.4V + mạch hạ áp LM2596 5.0V) v
 
 `main` giữ nguyên snapshot recovery trước simplify. Nhánh thử nghiệm dùng **toàn bộ S1–S8** cho `s3-ir` và `esp32-ir`; quang trở và TCRT5000 5 mắt giữ thuật toán recovery. Không thay GPIO, mặc định **HIGH = black** của IR 8 mắt hoặc cơ chế Standby khi khởi động.
 
-Bộ điều khiển nằm ở [src/line_tracking.cpp](src/line_tracking.cpp), được gọi mỗi **10 ms**, lọc đa số **2/3 mẫu**:
+Bộ điều khiển nằm ở [src/line_tracking.cpp](src/line_tracking.cpp), được gọi mỗi **5 ms** (200 Hz danh định), lọc đa số **2/3 mẫu**:
 
 - **FOLLOW:** tìm từng cụm mắt active liên tục, tính tâm cụm theo vị trí S1 = −3.5 đến S8 = +3.5. Nếu có nhiều cụm, chọn cụm gần vị trí line lần trước. Làm mượt sai số với hệ số 0.45; tăng/giảm tốc độ hai bên theo sai số và độ thay đổi sai số được chuẩn hóa theo thời gian lấy mẫu. Line 20 mm đi giữa thường tạo cụm S3–S6; không ép chỉ hai mắt giữa phải active.
-- **APPROACH_LEFT / APPROACH_RIGHT:** cụm chạm S1 hoặc S8, tâm lệch ít nhất **1.5 bước mắt** về phía đó → tiến chậm **65 ms** (`SHARP_TURN_LEAD_DELAY_MS`) để trục bánh tới góc, rồi mới quay. Nhận cả cụm 5 mắt tại góc 90°.
-- **TURN_LEFT / TURN_RIGHT:** giữ hướng xoay với PWM cấu hình **165** (trước power auto), kể cả khi tạm mất line. Sau ít nhất **80 ms**, phải thấy line hẹp ở giữa (sai số ≤ 0.5, không còn S1/S2/S7/S8) ổn định **30 ms** trên cả mẫu thô và mẫu lọc mới thoát rẽ. Trong lúc xác nhận tâm, ra lệnh dừng quay; khi bắt lại line thì tiến chậm trước. Driver vẫn áp dụng ramp PWM. Quá **1000 ms** tính từ lúc bắt đầu quay thì dừng.
+- **Bắt góc sớm:** cụm chạm một trong hai mắt ngoài S1/S2 hoặc S7/S8, tâm lệch ít nhất **1 bước mắt**, không chạm mép đối diện → giữ hướng rẽ. Mẫu thô và mẫu lọc phải cùng thấy phía đó. `LINE_CORNER_LEAD_MS = 0`: quay ngay, không tiến thêm 65 ms. Có thể chỉnh lại nhịp tiến nếu hình học xe cần.
+- **TURN_LEFT / TURN_RIGHT:** giữ hướng xoay với PWM cấu hình **165** (trước power auto), kể cả khi tạm mất line. Sau ít nhất **80 ms**, phải thấy line hẹp ở giữa (sai số ≤ 0.5, không còn S1/S2/S7/S8) ổn định **30 ms** trên cả mẫu thô và mẫu lọc mới thoát rẽ. Trong lúc xác nhận tâm, ra lệnh dừng quay; khi bắt lại line thì tiến chậm trước. Auto xuất PWM ngay, không chờ ramp hoặc đề-pa. Quá **1000 ms** tính từ lúc bắt đầu quay thì dừng.
 - **SEARCH:** nếu mất line sau khi đã lệch về một bên, xoay theo hướng lệch cuối tối đa **750 ms**. Không có hướng lệch trước đó thì dừng.
 - **CROSS_PASS:** cả 8 mắt active trong hai mẫu liên tiếp → đi thẳng tối đa **140 ms**; sau đó bám lại line. Nếu vẫn toàn active thì dừng. Với nhiều nhánh, ưu tiên cụm gần đường đang bám; lúc đang đi giữa thường tiếp tục thẳng. Không nhận dạng ý nghĩa mũi tên hoặc giải mê cung.
 - **STOPPED:** sau timeout, giữ dừng cho đến khi tắt/bật auto bằng nút `1` (hoặc đảo logic `I`). Không tự chạy lại khi đặt xe xuống line.
 
 Các thời gian và ngưỡng trong `include/config.h` là giá trị thử nghiệm, cần hiệu chỉnh trên xe. Nhấc cảm biến khỏi sàn có thể cho tín hiệu giống nền ít phản xạ; các luật này không phải bộ phát hiện nhấc xe. Mẫu 4 mắt `-#-..-#-` trước đây không còn được dùng làm ngoại lệ: cụm line được đánh giá từ đủ 8 bit thực tế.
 
-**Power auto là 88%** (`MOTOR_OUTPUT_PERCENT`, giữ giá trị người dùng đã chỉnh), chỉ truyền cho lệnh của bộ điều khiển IR 8 mắt. Các lệnh motor thường và điều khiển tay mặc định **100%**. Scale áp dụng sau PWM tối thiểu và đề-pa. Các combo dùng thuật toán recovery hiện chạy motor mặc định 100%.
+**Power auto là 65%** (`MOTOR_OUTPUT_PERCENT`, giảm từ 88% để hạn chế vượt góc), chỉ truyền cho lệnh của bộ điều khiển IR 8 mắt. Các lệnh motor thường và điều khiển tay mặc định **100%**. Auto dùng `runLR(left, right, power, true)` để bỏ đề-pa/ramp, cả khi dừng hoặc đảo hướng. Manual vẫn giữ đề-pa/ramp. Power áp dụng sau PWM tối thiểu; nếu giảm power làm xe không đủ lực khởi hành thì cần tăng lại sau khi thử tải. Các combo dùng thuật toán recovery hiện chạy motor mặc định 100%.
 
 Telemetry vẫn hiển thị đủ 8 bit raw và thêm `Track:FOLLOW`, `TURN_LEFT`, `TURN_RIGHT`, `SEARCH`, `CROSS_PASS` hoặc `STOPPED`. Trường `E` mô tả mẫu tức thời để chẩn đoán, còn `Track` là trạng thái điều khiển thực tế sau lọc. `V` trên hai cấu hình IR chỉ báo chế độ thử nghiệm bám tâm; không chuyển sang dò mép. `I` vẫn đảo HIGH/LOW.
 
@@ -39,7 +39,7 @@ Telemetry vẫn hiển thị đủ 8 bit raw và thêm `Track:FOLLOW`, `TURN_LEF
 ## 📌 Tính Năng Chính
 
 - **Điều khiển 4 động cơ L298N theo kiểu `LbMotion.runLR` (Leanbot-style):**
-  - **Power riêng cho auto IR 8 mắt: 88%**, điều khiển tay mặc định 100%. `runLR(left, right, powerPercent)` nhận power theo từng lệnh; các lời gọi hai tham số giữ mặc định 100%.
+  - **Power riêng cho auto IR 8 mắt: 65%**, điều khiển tay mặc định 100%. `runLR(left, right, powerPercent)` nhận power theo từng lệnh; các lời gọi hai tham số giữ mặc định 100%.
   - API chính: **`runLR(vL, vR)`** với **vận tốc chuẩn hoá `-1000..+1000`** trong *frame robot* (dương = tiến, âm = lùi, cho **cả hai bên**).
   - `runLR(1000, 1000)` = đi thẳng · `runLR(0, 0)` = dừng · `runLR(-500, 500)` = xoay tại chỗ sang trái.
   - Lớp trên cùng: `runForward` / `runBackward` / `runTurnLeft` / `runTurnRight` / `runArcLeft` / `runArcRight` / `stopMotion`.

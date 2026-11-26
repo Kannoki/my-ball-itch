@@ -67,7 +67,7 @@ void resetLineTracking() {
 }
 
 void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
-    const unsigned long elapsed = lastSampleAt == 0 ? PID_SAMPLE_INTERVAL_MS : now - lastSampleAt;
+    const unsigned long elapsed = lastSampleAt == 0 ? LINE_SAMPLE_INTERVAL_MS : now - lastSampleAt;
     lastSampleAt = now;
     const bool allBlack = raw == 0xFF && wasAllBlack;
     wasAllBlack = raw == 0xFF;
@@ -88,7 +88,7 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
 
     // Sensor thay goc truoc khi truc banh toi goc: tien cham mot nhip roi moi xoay.
     if (state == APPROACH_LEFT || state == APPROACH_RIGHT) {
-        if (now - startedAt < SHARP_TURN_LEAD_DELAY_MS) {
+        if (now - startedAt < LINE_CORNER_LEAD_MS) {
             drive(turnSpeed, turnSpeed);
         } else {
             const bool left = state == APPROACH_LEFT;
@@ -110,7 +110,7 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
                                      findCluster(raw, rawPosition) && fabsf(rawPosition) <= 0.5f;
             if (now - startedAt >= LINE_TURN_MIN_MS && centered && rawCentered) {
                 // Khong tinh khoang tre dai cua loop thanh nhieu mau xac nhan.
-                centeredMs += min(elapsed, static_cast<unsigned long>(PID_SAMPLE_INTERVAL_MS));
+                centeredMs += min(elapsed, static_cast<unsigned long>(LINE_SAMPLE_INTERVAL_MS));
             } else {
                 centeredMs = 0;
             }
@@ -166,11 +166,20 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
 
     if (state == SEARCH) enter(FOLLOW, now);
     lastPosition = position;
-    const bool leftCorner = (filtered & 0x01) && !(filtered & 0x80) && position <= -LINE_TURN_POSITION;
-    const bool rightCorner = (filtered & 0x80) && !(filtered & 0x01) && position >= LINE_TURN_POSITION;
+    // Lay ca hai mat ngoai moi ben de khong bo lo goc rong/90 do khi chua cham S1/S8.
+    const bool leftCorner = (filtered & 0x03) && !(filtered & 0xC0) &&
+                            (raw & 0x03) && !(raw & 0xC0) && position <= -LINE_TURN_POSITION;
+    const bool rightCorner = (filtered & 0xC0) && !(filtered & 0x03) &&
+                             (raw & 0xC0) && !(raw & 0x03) && position >= LINE_TURN_POSITION;
     if (leftCorner || rightCorner) {
-        enter(leftCorner ? APPROACH_LEFT : APPROACH_RIGHT, now);
-        drive(turnSpeed, turnSpeed);
+        if (LINE_CORNER_LEAD_MS > 0) {
+            enter(leftCorner ? APPROACH_LEFT : APPROACH_RIGHT, now);
+            drive(turnSpeed, turnSpeed);
+        } else {
+            enter(leftCorner ? TURN_LEFT : TURN_RIGHT, now);
+            if (leftCorner) drive(-turnSpeed, turnSpeed);
+            else drive(turnSpeed, -turnSpeed);
+        }
         return;
     }
 

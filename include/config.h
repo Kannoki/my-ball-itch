@@ -74,7 +74,7 @@ enum EdgeMode {
 // nen runTurnLeft LUON xoay sang trai du doi mau chan hay kiem tra chan.
 #define MOTOR_SPEED_SCALE        1000  // Gia tri toi da cua van toc do chuan hoa
 #define MOTOR_SPEED_STEP          40   // Buoc tang/giam khi lenh '+'/'-' qua BLE (~10/255)
-#define MOTOR_OUTPUT_PERCENT      88 // Cong suat rieng cho lenh do line tu dong
+#define MOTOR_OUTPUT_PERCENT      65 // Cong suat rieng cho lenh do line tu dong
 
 // Van toc do mac dinh (don vi chuan hoa)
 #define MOTOR_BASE_SPEED         725   // ~185/255 : toc do co ban khi di thang
@@ -152,7 +152,9 @@ enum EdgeMode {
 // Thu nghiem IR 8 mat: nho huong quay cho den khi line tro lai giua.
 #define LINE_TURN_TIMEOUT_MS     1000
 #define LINE_TURN_MIN_MS         80  // Khong nham line cu thanh line moi ngay khi bat dau quay
-#define LINE_TURN_POSITION       1.5f // Nhan ca cum 5 mat o goc 90 do, khong doi lech toi 2.0
+#define LINE_TURN_POSITION       1.0f // Nhan goc som tu hai mat ngoai, khong doi cham S1/S8
+#define LINE_SAMPLE_INTERVAL_MS  5   // Auto IR 8 mat: 200 Hz
+#define LINE_CORNER_LEAD_MS      0   // Quay ngay, khong tien them qua goc
 #define LINE_TURN_CENTER_MS      30   // Line o giua on dinh 30 ms moi ket thuc re
 #define LINE_TURN_PWM            165  // Quay cham de bat lai line, tranh vuot qua tam
 
