@@ -189,14 +189,14 @@ enum EdgeMode {
 #define PIN_LINE_IR_EN  4   // GPIO 4 xuat HIGH bat den IR (tranh GPIO 1 TX0 cua ESP32 38-pin)
 #endif
 #else
-#define PIN_LINE_S1     4   // Cam bien ngoai cung ben trai
+#define PIN_LINE_S1     4   // Kenh S1 cua module (vi tri tren xe xem LINE_SENSOR_REVERSED)
 #define PIN_LINE_S2     5
 #define PIN_LINE_S3     6
-#define PIN_LINE_S4     7   // Cam bien giua trai
-#define PIN_LINE_S5     15  // Cam bien giua phai
+#define PIN_LINE_S4     7
+#define PIN_LINE_S5     15
 #define PIN_LINE_S6     16
 #define PIN_LINE_S7     17
-#define PIN_LINE_S8     18  // Cam bien ngoai cung ben phai
+#define PIN_LINE_S8     18  // Kenh S8 cua module
 
 // Chan kich hoat den LED phat hong ngoai (IR / 1R Enable):
 // - Mach 8 mat co 1 chan ky hieu 'IR' (nhin giong '1R') dung de cap nguon/bat 8 den LED phat hong ngoai
@@ -213,6 +213,15 @@ enum EdgeMode {
 #define LINE_ACTIVE_STATE LOW
 #else
 #define LINE_ACTIVE_STATE HIGH
+#endif
+
+// Thu tu trai -> phai theo HUONG XE TIEN. Tren xe S3-IR hien tai,
+// mat ngoai cung ben trai la S8 (GPIO 18), da xac nhan bang Serial.
+// Chi dao thu tu mat, khong dao muc den/trang hay chieu motor.
+#if !defined(BOARD_ESP32_38PIN) && !defined(SENSOR_PHOTORESISTOR) && !defined(SENSOR_TCRT5000_5CH)
+#define LINE_SENSOR_REVERSED 1
+#else
+#define LINE_SENSOR_REVERSED 0
 #endif
 
 // Nguong phan loai cho goc cua gat & he so PID theo so mat cam bien

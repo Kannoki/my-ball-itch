@@ -17,21 +17,21 @@
 
 ## 2. ĐẤU DÂY CẢM BIẾN DÒ LINE IR 8 MẮT
 
-Nhìn theo hướng xe chạy tới: `S1 (D1)` ngoài cùng bên **TRÁI** → `S8 (D8)` ngoài cùng bên **PHẢI**.
+Trên xe hiện tại, kiểm tra bằng Serial xác nhận mắt ngoài cùng bên **TRÁI** kích hoạt kênh `S8 / GPIO 18`. Cấu hình `s3-ir` dùng `LINE_SENSOR_REVERSED = 1`, đọc **S8 → S1** theo hướng **trái → phải khi xe tiến**. Bảng dưới giữ tên kênh đấu dây; nếu lắp thanh theo chiều ngược lại thì đổi cấu hình về `0`.
 
 | Chân cảm biến | GPIO ESP32-S3 | Ý nghĩa |
 | :--- | :--- | :--- |
 | **VCC** | **5V / VIN** (từ LM2596 5.0V) hoặc **3V3** | Nguồn nuôi thanh cảm biến |
 | **GND** | **GND** | Mass chung |
 | **IR** (hoặc **1R**) | **GPIO 1** (hoặc nối thẳng **VCC**) | **BẮT BUỘC NỐI** để bật 8 LED phát hồng ngoại |
-| **D1 (S1)** | **GPIO 4** | Mắt ngoài cùng bên TRÁI |
-| **D2 (S2)** | **GPIO 5** | Mắt lệch trái mức 2 |
-| **D3 (S3)** | **GPIO 6** | Mắt lệch trái mức 3 |
-| **D4 (S4)** | **GPIO 7** | Mắt giữa bên TRÁI |
-| **D5 (S5)** | **GPIO 15** | Mắt giữa bên PHẢI |
-| **D6 (S6)** | **GPIO 16** | Mắt lệch phải mức 3 |
-| **D7 (S7)** | **GPIO 17** | Mắt lệch phải mức 2 |
-| **D8 (S8)** | **GPIO 18** | Mắt ngoài cùng bên PHẢI |
+| **D1 (S1)** | **GPIO 4** | Mắt ngoài cùng bên PHẢI |
+| **D2 (S2)** | **GPIO 5** | Mắt thứ 2 từ phải |
+| **D3 (S3)** | **GPIO 6** | Mắt thứ 3 từ phải |
+| **D4 (S4)** | **GPIO 7** | Mắt giữa bên PHẢI |
+| **D5 (S5)** | **GPIO 15** | Mắt giữa bên TRÁI |
+| **D6 (S6)** | **GPIO 16** | Mắt thứ 3 từ trái |
+| **D7 (S7)** | **GPIO 17** | Mắt thứ 2 từ trái |
+| **D8 (S8)** | **GPIO 18** | Mắt ngoài cùng bên TRÁI |
 
 - **Chân `IR` / `1R`:** Nếu để trống, 8 LED IR tắt → cảm biến báo **FULL ĐEN**. Dùng camera điện thoại soi để thấy ánh sáng mờ tím hồng.
 - **Mức logic (`LINE_ACTIVE_STATE`):** Mặc định `HIGH` cho thanh IR 8 mắt hiện dùng: đã đo nền trắng cho `GPIO: 00000000`, nên LOW là nền và HIGH được dùng làm line. Kiểm tra thêm trên vạch đen; gửi `I` qua BLE UART nếu module có logic ngược.

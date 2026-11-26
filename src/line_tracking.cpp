@@ -18,14 +18,14 @@ State state = FOLLOW;
 unsigned long startedAt = 0, lastSampleAt = 0, recoveryStartedAt = 0;
 unsigned long eventStartedAt = 0;
 uint8_t previousRaw = 0, olderRaw = 0;
-unsigned sampleCount = 0, centerMs = 0, straightMs = 0, exitMs = 0;
+unsigned sampleCount = 0, centerMs = 0, straightMs = 0, exitMs = 0, cornerMs = 0;
 unsigned recoveryAttempts = 0;
 bool recoveryActive = false;
 bool eventActive = false, hasSeenLine = false;
 bool foundLeft = false, foundRight = false, turnDeparted = false;
 float lastPosition = 0.0f, previousError = 0.0f;
 bool hasError = false;
-int lastTurn = 0, recoveryDirection = 1;
+int lastTurn = 0, recoveryDirection = 1, cornerDirection = 0;
 int leftPwm = 0, rightPwm = 0;
 
 void drive(int left, int right) {
@@ -34,10 +34,13 @@ void drive(int left, int right) {
 }
 
 void enter(State next, unsigned long now) {
+    const char* previous = getLineTrackingStatus();
     state = next;
     startedAt = now;
-    centerMs = straightMs = exitMs = 0;
+    centerMs = straightMs = exitMs = cornerMs = 0;
+    cornerDirection = 0;
     hasError = false;
+    Serial.printf("[Line] %s -> %s | Raw=0x%02X\n", previous, getLineTrackingStatus(), static_cast<unsigned>(previousRaw));
 }
 
 // Neu co nhieu cum, chi lay cum gan line truoc do. Khong lay trung binh qua khoang trang.
@@ -139,12 +142,13 @@ void resetLineTracking() {
     startedAt = lastSampleAt = recoveryStartedAt = 0;
     eventStartedAt = 0;
     previousRaw = olderRaw = 0;
-    sampleCount = centerMs = straightMs = exitMs = recoveryAttempts = 0;
+    sampleCount = centerMs = straightMs = exitMs = cornerMs = recoveryAttempts = 0;
     recoveryActive = foundLeft = foundRight = turnDeparted = hasError = false;
     eventActive = hasSeenLine = false;
     lastPosition = previousError = 0.0f;
     lastTurn = 0;
     recoveryDirection = 1;
+    cornerDirection = 0;
     drive(0, 0);
 }
 
@@ -225,6 +229,20 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
         const unsigned long age = now - startedAt;
         exitMs = age >= LINE_OBSERVE_MIN_MS && centered ? exitMs + tick : 0;
 
+        // Line da ra khoi hai mat giua va chi con o mot ben: dung tien ngay.
+        // Xac nhan tren ca mau tho va mau loc roi re, khong cho het 240 ms.
+        const bool leftOnly = s.left && direct.left && !s.right && !direct.right;
+        const bool rightOnly = s.right && direct.right && !s.left && !direct.left;
+        const bool sideOnly = !(s.raw & 0x18) && !(direct.raw & 0x18) && (leftOnly || rightOnly);
+        const int direction = sideOnly ? (leftOnly ? -1 : 1) : 0;
+        cornerMs = sideOnly ? (direction == cornerDirection ? cornerMs + tick : tick) : 0;
+        cornerDirection = direction;
+        if (sideOnly) {
+            drive(0, 0);
+            if (cornerMs >= LINE_EXIT_CONFIRM_MS) beginTurn(direction, s, now, turnSpeed);
+            return;
+        }
+
         // Chi chap nhan loi thang khi da qua vung rong va line giua on dinh.
         if (exitMs >= LINE_EXIT_CONFIRM_MS) {
             enter(VERIFY, now);
@@ -243,8 +261,9 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
             }
             return;
         }
-        // Chi tien o toc do quan sat; khi cum don lech thi van chinh nhe ve cum do.
-        if (s.line) follow(s, slowSpeed, elapsed);
+        // Mat line khi quan sat thi dung tai cho, khong tiep tuc lao qua goc.
+        if (s.count == 0 || direct.count == 0) drive(0, 0);
+        else if (s.line) follow(s, slowSpeed, elapsed);
         else drive(slowSpeed, slowSpeed);
         return;
     }

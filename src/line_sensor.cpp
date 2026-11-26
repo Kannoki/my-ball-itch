@@ -1,7 +1,7 @@
 #include "line_sensor.h"
 #include "line_tracking.h"
 
-// Mang chua cac chan GPIO cua cam bien theo thu tu tu trai qua phai
+// Day noi theo kenh S1..S8 cua module. Thu tu lap tren xe duoc chuan hoa ben duoi.
 static const uint8_t sensorPins[NUM_SENSORS] = {
 #if NUM_SENSORS == 5
     PIN_LINE_S1, PIN_LINE_S2, PIN_LINE_S3, PIN_LINE_S4, PIN_LINE_S5
@@ -10,6 +10,10 @@ static const uint8_t sensorPins[NUM_SENSORS] = {
     PIN_LINE_S5, PIN_LINE_S6, PIN_LINE_S7, PIN_LINE_S8
 #endif
 };
+
+static int sensorChannel(int index) {
+    return LINE_SENSOR_REVERSED ? NUM_SENSORS - 1 - index : index;
+}
 
 // Trong so tuong ung cho tung cam bien tu trai qua phai
 static const float sensorWeights[NUM_SENSORS] = {
@@ -50,7 +54,7 @@ void toggleLineActiveState() {
 uint8_t readDirectGpioPins() {
     uint8_t direct = 0;
     for (int i = 0; i < NUM_SENSORS; i++) {
-        if (digitalRead(sensorPins[i]) == HIGH) {
+        if (digitalRead(sensorPins[sensorChannel(i)]) == HIGH) {
             direct |= (1 << i);
         }
     }
@@ -78,6 +82,12 @@ bool isSensorIrEmitterEnabled() {
 void lineSensorInit() {
     setSensorIrEmitter(true);
     setSensorPullup(sensorPullupEnabled);
+    Serial.print("[Sensor] Thu tu trai -> phai theo huong xe tien:");
+    for (int i = 0; i < NUM_SENSORS; ++i) {
+        const int channel = sensorChannel(i);
+        Serial.printf(" S%d(GPIO%d)", channel + 1, sensorPins[channel]);
+    }
+    Serial.println();
 #if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
     Serial.printf("[Sensor] Khoi tao %d mat do line! IR Enable: GPIO %d (HIGH) | Tro keo: %s | Muc bat vach den: %s\n",
                   NUM_SENSORS,
@@ -306,9 +316,10 @@ String getSensorTelemetryDetailed() {
     uint8_t raw = decodeSensorPins(directPins);
 
     String s = "\n=== " + String(NUM_SENSORS) + "-SENSOR DIAGNOSTIC ===\n";
-    s += "Pins:";
+    s += "Pins (trai -> phai theo huong xe tien):";
     for (int i = 0; i < NUM_SENSORS; i++) {
-        s += " S" + String(i + 1) + "(" + String(sensorPins[i]) + ")";
+        const int channel = sensorChannel(i);
+        s += " S" + String(channel + 1) + "(" + String(sensorPins[channel]) + ")";
     }
     s += "\n";
     s += "GPIO:  ";
