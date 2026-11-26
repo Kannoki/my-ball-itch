@@ -17,25 +17,25 @@
 
 ## 2. ĐẤU DÂY CẢM BIẾN DÒ LINE IR 8 MẮT
 
-Nhìn theo hướng xe chạy tới: `S1 (D1)` ngoài cùng bên **TRÁI** → `S8 (D8)` ngoài cùng bên **PHẢI**.
+Nhìn theo hướng xe chạy tới: `S1 (D8)` ngoài cùng bên **TRÁI** → `S8 (D1)` ngoài cùng bên **PHẢI**.
 
 | Chân cảm biến | GPIO ESP32 38-pin | Ý nghĩa |
 | :--- | :--- | :--- |
 | **VCC** | **5V / VIN** (từ LM2596 5.0V) hoặc **3V3** | Nguồn nuôi thanh cảm biến |
 | **GND** | **GND** | Mass chung |
 | **IR** (hoặc **1R**) | **GPIO 4** (hoặc nối thẳng **VCC**) | **BẮT BUỘC NỐI** để bật 8 LED phát hồng ngoại |
-| **D1 (S1)** | **GPIO 23** | Mắt ngoài cùng bên TRÁI |
-| **D2 (S2)** | **GPIO 22** | Mắt lệch trái mức 2 |
-| **D3 (S3)** | **GPIO 21** | Mắt lệch trái mức 3 |
-| **D4 (S4)** | **GPIO 19** | Mắt giữa bên TRÁI |
-| **D5 (S5)** | **GPIO 18** | Mắt giữa bên PHẢI |
-| **D6 (S6)** | **GPIO 5** | Mắt lệch phải mức 3 |
-| **D7 (S7)** | **GPIO 17** | Mắt lệch phải mức 2 |
-| **D8 (S8)** | **GPIO 16** | Mắt ngoài cùng bên PHẢI |
+| **D8 (S1)** | **GPIO 16** | Mắt ngoài cùng bên TRÁI |
+| **D7 (S2)** | **GPIO 17** | Mắt lệch trái mức 2 |
+| **D6 (S3)** | **GPIO 5** | Mắt lệch trái mức 3 |
+| **D5 (S4)** | **GPIO 18** | Mắt giữa bên TRÁI |
+| **D4 (S5)** | **GPIO 19** | Mắt giữa bên PHẢI |
+| **D3 (S6)** | **GPIO 21** | Mắt lệch phải mức 3 |
+| **D2 (S7)** | **GPIO 22** | Mắt lệch phải mức 2 |
+| **D1 (S8)** | **GPIO 23** | Mắt ngoài cùng bên PHẢI |
 
 - **An toàn chân ESP32 38-pin:** Cụm `GPIO 23, 22, 21, 19, 18, 5, 17, 16, 4` nằm gọn ở dãy phải, tránh Flash (`6–11`), tránh `UART0` (`1/3`) và hỗ trợ `INPUT_PULLUP` (`P`).
 - **Chân `IR` / `1R`:** Nếu bỏ trống, 8 LED IR tắt → báo **FULL ĐEN**. Dùng camera điện thoại soi để kiểm tra ánh sáng mờ tím hồng.
-- **Mức logic (`LINE_ACTIVE_STATE`):** Mặc định `LOW` (vạch đen = `0`, nền trắng = `1`). Gửi `I` qua BLE UART để đảo nhanh nếu ngược.
+- **Mức logic (`LINE_ACTIVE_STATE`):** Mặc định `HIGH` cho thanh IR 8 mắt hiện dùng (nền trắng đã đo là LOW). Kiểm tra trên cả nền trắng và vạch đen; gửi `I` qua BLE UART để đảo nhanh nếu module có logic ngược.
 
 ---
 

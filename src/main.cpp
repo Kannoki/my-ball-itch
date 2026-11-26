@@ -2,27 +2,12 @@
 #include "config.h"
 #include "motor_driver.h"
 #include "line_sensor.h"
+#include "line_tracking.h"
 #include "servo1.h"
 #include "servo2.h"
 #include "servo3.h"
 #include "ble_controller.h"
 
-struct LineTrackingState {
-    unsigned long sampledAt = 0;
-    unsigned long lostAt = 0;
-    uint8_t previousRaw = 0;
-    uint8_t olderRaw = 0;
-    uint8_t sampleCount = 0;
-    uint8_t mode = EDGE_FOLLOW_MODE;
-    uint8_t activeLevel = LINE_ACTIVE_STATE;
-    LineEdge lastEdge = {0.0f, EDGE_AUTO};
-    float filteredError = 0.0f;
-    bool hasPreviousError = false;
-    bool sharpTurn = false;
-    int searchDirection = 0;
-};
-
-static LineTrackingState tracking;
 static unsigned long lastDebugTime = 0;
 
 void setup() {
@@ -59,140 +44,6 @@ void setup() {
     Serial.println("==================================================");
 }
 
-// Chuyen van toc do chuan hoa (-1000..+1000) sang duty PWM (0-255) va nguoc lai.
-// He so PID duoc giu nguyen tren thang do PWM de khong phai chinh lai.
-static int speedToPwm(int normalizedSpeed) {
-    const int magnitude = constrain(abs(normalizedSpeed), 0, MOTOR_SPEED_SCALE);
-    return (int)((long)magnitude * 255L / MOTOR_SPEED_SCALE);
-}
-
-static int pwmToSpeed(int pwm) {
-    return (int)((long)constrain(pwm, -255, 255) * MOTOR_SPEED_SCALE / 255L);
-}
-
-static void searchForLine(uint8_t raw, unsigned long now, int baseSpeedPwm) {
-    if (tracking.searchDirection == 0) {
-        tracking.lostAt = now;
-        tracking.hasPreviousError = false;
-        tracking.sharpTurn = false;
-
-        const EdgeMode polarity = tracking.mode == EDGE_AUTO ? tracking.lastEdge.polarity : static_cast<EdgeMode>(tracking.mode);
-        if (fabsf(tracking.lastEdge.position) >= 1.0f) {
-            tracking.searchDirection = tracking.lastEdge.position < 0.0f ? -1 : 1;
-        } else if ((polarity == EDGE_WHITE_LEFT_BLACK_RIGHT || polarity == EDGE_BLACK_LEFT_WHITE_RIGHT) &&
-                   (raw == 0x00 || raw == SENSOR_MASK)) {
-            const bool whiteOnLeft = polarity == EDGE_WHITE_LEFT_BLACK_RIGHT;
-            const bool onWhite = raw == 0x00;
-            tracking.searchDirection = (onWhite == whiteOnLeft) ? 1 : -1;
-        } else {
-            tracking.searchDirection = tracking.lastEdge.position < 0.0f ? -1 : 1;
-        }
-    }
-
-    // Mau tron chi con mep nguoc chieu: tim ve phia cac mat dang thay den.
-    if (raw != 0x00 && raw != SENSOR_MASK) {
-        tracking.searchDirection = (raw & 0x01) ? -1 : 1;
-    }
-
-    if (now - tracking.lostAt >= LINE_SEARCH_TIMEOUT_MS) {
-        stopMotion();
-    } else if (tracking.searchDirection < 0) {
-        runTurnLeft(pwmToSpeed(min(baseSpeedPwm, MOTOR_SEARCH_SPEED_PWM)));
-    } else {
-        runTurnRight(pwmToSpeed(min(baseSpeedPwm, MOTOR_SEARCH_SPEED_PWM)));
-    }
-}
-
-// Ben trong cua vong tron se dung that (0) khi yeu cau PWM nho hon dead-band,
-// thay vi bi "keo hai" o duty nho khong duoc chay -> xe om cong sach hon.
-static int clampCurveMotorSpeed(int rawSpeed, int minPwm) {
-    const int deadband = getMotorRuntimeConfig().deadbandLeft;
-    if (rawSpeed < deadband) {
-        return 0;
-    }
-    return constrain(rawSpeed, minPwm, MOTOR_MAX_SPEED_PWM);
-}
-
-// Lam tron duty theo buoc 5/255 de tranh PWM nhieu lien tuc gay tieng keo.
-static int quantizePwm(int pwm) {
-    return (pwm / 5) * 5;
-}
-
-static void processLineTracking() {
-    const uint8_t mode = edgeFollowMode;
-    const uint8_t activeLevel = lineActiveState;
-    if (tracking.mode != mode || tracking.activeLevel != activeLevel) {
-        tracking = {};
-        tracking.mode = mode;
-        tracking.activeLevel = activeLevel;
-        stopMotion();
-    }
-
-    const unsigned long now = millis();
-    const unsigned long elapsed = now - tracking.sampledAt;
-    if (elapsed < PID_SAMPLE_INTERVAL_MS) {
-        return;
-    }
-    tracking.sampledAt = now;
-
-    const uint8_t raw = readRawSensors();
-    // Moi bit can xuat hien trong it nhat hai trong ba mau.
-    const uint8_t filteredRaw = (raw & tracking.previousRaw) |
-                                (raw & tracking.olderRaw) |
-                                (tracking.previousRaw & tracking.olderRaw);
-    tracking.olderRaw = tracking.previousRaw;
-    tracking.previousRaw = raw;
-    if (tracking.sampleCount < 2) {
-        ++tracking.sampleCount;
-        return;
-    }
-
-    const int baseSpeedPwm = motorBaseSpeed > 0 ? speedToPwm(motorBaseSpeed) : MOTOR_BASE_SPEED_PWM;
-    LineEdge edge;
-    if (!findLineEdge(filteredRaw, mode, tracking.lastEdge.position, edge)) {
-        searchForLine(filteredRaw, now, baseSpeedPwm);
-        return;
-    }
-
-    tracking.searchDirection = 0;
-    tracking.lastEdge = edge;
-
-    float derivative = 0.0f;
-    if (tracking.hasPreviousError) {
-        const float change = LINE_ERROR_FILTER_ALPHA * (edge.position - tracking.filteredError);
-        tracking.filteredError += change;
-        derivative = change * PID_SAMPLE_INTERVAL_MS / elapsed;
-    } else {
-        tracking.filteredError = edge.position;
-        tracking.hasPreviousError = true;
-    }
-
-    const float error = tracking.filteredError;
-    const float turnThreshold = tracking.sharpTurn ? SHARP_TURN_EXIT_THRESHOLD : SHARP_TURN_THRESHOLD;
-    tracking.sharpTurn = fabsf(error) >= turnThreshold && fabsf(edge.position) > SHARP_TURN_EXIT_THRESHOLD &&
-                         error * edge.position > 0.0f;
-    if (tracking.sharpTurn) {
-        const int speedPwm = min(baseSpeedPwm, MOTOR_SPIN_SPEED_PWM);
-        if (error < 0.0f) runTurnLeft(pwmToSpeed(speedPwm));
-        else runTurnRight(pwmToSpeed(speedPwm));
-        return;
-    }
-
-    const int cruiseSpeed = max(MOTOR_MIN_SPEED_PWM,
-                                baseSpeedPwm - static_cast<int>(LINE_CURVE_SPEED_DROP * fabsf(error)));
-    const float correction = PID_KP * error + PID_KD * derivative;
-
-    // Hieu chinh theo he van toc do chuan hoa: ben trai tang, ben phai giam
-    // khi xe lech sang phai (error > 0) - luon o frame robot, khong phu thuoc
-    // INVERT_*/SWAP_* (do cuc thuoc tinh duoc apply o tang driver).
-    const int leftSpeed = clampCurveMotorSpeed(
-        static_cast<int>(cruiseSpeed + correction), MOTOR_MIN_PWM_LEFT);
-    const int rightSpeed = clampCurveMotorSpeed(
-        static_cast<int>(cruiseSpeed - correction), MOTOR_MIN_PWM_RIGHT);
-
-    runLR(pwmToSpeed(quantizePwm(leftSpeed)), pwmToSpeed(quantizePwm(rightSpeed)));
-}
-
 void loop() {
     motorDriverUpdate();
     bleControllerUpdate();
@@ -203,16 +54,7 @@ void loop() {
     servo3_update();
 
     // 3. Xu ly di chuyen tuy theo Che do
-    static bool wasTracking = false;
-    const bool isTracking = currentRobotMode == MODE_LINE_TRACKING;
-    if (isTracking) {
-        if (!wasTracking) {
-            tracking = {};
-            stopMotion();
-        }
-        processLineTracking();
-    }
-    wasTracking = isTracking;
+    updateLineTracking(currentRobotMode == MODE_LINE_TRACKING);
 
     // 4. Gui trang thai 8 mat sensor ve BLE UI (UART Terminal tab) dinh ky moi 300ms
     unsigned long now = millis();

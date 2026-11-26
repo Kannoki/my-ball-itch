@@ -1,6 +1,7 @@
 #include "ble_controller.h"
 #include "motor_driver.h"
 #include "line_sensor.h"
+#include "line_tracking.h"
 #include "servo1.h"
 #include "servo2.h"
 #include "servo3.h"
@@ -44,17 +45,17 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
 
     Serial.printf("[BLE] Controller Button '%c': %s\n", button, pressed ? "PRESSED" : "RELEASED");
 
-    // 1. Phim 1: KHOI DONG / TAM DUNG DO VIEN LINE
+    // 1. Phim 1: KHOI DONG / TAM DUNG DO LINE LINE
     if (button == '1' && pressed) {
         if (currentRobotMode == MODE_LINE_TRACKING) {
             currentRobotMode = MODE_STANDBY_BLE;
             stopMotion();
-            bleSendLog("Trang thai: TAM DUNG (Standby). Bam '1' de tiep tuc do vien.\n");
-            Serial.println("[Mode] TAM DUNG DO VIEN (Standby)");
+            bleSendLog("Trang thai: TAM DUNG (Standby). Bam '1' de tiep tuc do line.\n");
+            Serial.println("[Mode] TAM DUNG DO LINE (Standby)");
         } else {
             currentRobotMode = MODE_LINE_TRACKING;
-            bleSendLog("Trang thai: BAT DAU DO VIEN (Edge Tracking)!\n");
-            Serial.println("[Mode] BAT DAU DO VIEN (Edge Tracking)");
+            bleSendLog("Trang thai: BAT DAU DO LINE (Co ban)!\n");
+            Serial.println("[Mode] BAT DAU DO LINE (Co ban)");
         }
         return;
     }
@@ -111,6 +112,52 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
     }
 }
 
+static String handleReverseTimeCommand(const String& cmd) {
+    if (!cmd.substring(0, 3).equalsIgnoreCase("REV")) return "";
+    if (cmd.length() > 3) {
+        const char* usage = "Dung REV <ms> (1..2147483647), vi du REV 2000\n";
+        if (cmd[3] != ' ' && cmd[3] != '\t') return usage;
+
+        String argument = cmd.substring(4);
+        argument.trim();
+        uint32_t duration = 0;
+        for (unsigned int i = 0; i < argument.length(); ++i) {
+            const char c = argument[i];
+            if (c < '0' || c > '9') return usage;
+            const uint32_t digit = c - '0';
+            if (duration > (INT32_MAX - digit) / 10) return usage;
+            duration = duration * 10 + digit;
+        }
+        if (duration == 0) return usage;
+        setCrossReverseDuration(duration);
+    }
+    return String("REV -> ") + String(getCrossReverseDuration()) + " ms\n";
+}
+
+static void pollSerialReverseTime() {
+    static char line[32];
+    static size_t length = 0;
+    static bool overflow = false;
+
+    while (Serial.available() > 0) {
+        const char c = static_cast<char>(Serial.read());
+        if (c == '\r' || c == '\n') {
+            if (length > 0 && !overflow) {
+                line[length] = '\0';
+                String command(line);
+                command.trim();
+                Serial.print(handleReverseTimeCommand(command));
+            }
+            length = 0;
+            overflow = false;
+        } else if (length < sizeof(line) - 1) {
+            line[length++] = c;
+        } else {
+            overflow = true;
+        }
+    }
+}
+
 // Ham xu ly ky tu / chuoi text tu man hinh UART Terminal cua Bluefruit app
 static void handleUartText(const String& text) {
     String cmd = text;
@@ -119,12 +166,19 @@ static void handleUartText(const String& text) {
 
     Serial.printf("[BLE UART] Nhan: %s\n", cmd.c_str());
 
+    const String reverseReply = handleReverseTimeCommand(cmd);
+    if (reverseReply.length() != 0) {
+        bleSendLog(reverseReply);
+        return;
+    }
+
     char c = cmd.charAt(0);
 
     // Tro giup / Bao cao chan doan sensor chi tiet: ?, H hoac h
     if (c == '?' || c == 'H' || c == 'h') {
         bleSendLog(getSensorTelemetryDetailed());
         bleSendLog(getMotorDiagnostics());
+        bleSendLog("REV [ms]: xem/dat thoi gian lui sau giao lo\n");
         return;
     }
 
@@ -242,10 +296,12 @@ static void handleUartText(const String& text) {
         return;
     }
 
-    // Chuyen doi che do bam vien: V hoac v
+    // V chi nhac lai luat; khong con nhieu che do do line de doi nham.
     if (c == 'V' || c == 'v') {
-        toggleEdgeFollowMode();
-        bleSendLog("EDGE MODE -> " + String(getEdgeFollowModeName()) + "\n");
+        bleSendLog("DO LINE: PD theo tam vach, di thang qua vach ngang.\n");
+#if NUM_SENSORS == 8
+        bleSendLog("Mat line co moc: lui ve moc va thu di thang. Sau giao lo con line thang 200 ms: chay chuoi servo.\n");
+#endif
         return;
     }
 
@@ -261,7 +317,7 @@ static void handleUartText(const String& text) {
         return;
     }
 
-    // Chuyen che do / Bat dau do vien: 1, M hoac m (khi chi co 1 ky tu hoac khong co tham so)
+    // Chuyen che do / Bat dau do line: 1, M hoac m (khi chi co 1 ky tu hoac khong co tham so)
     if ((c == '1' || c == 'M' || c == 'm') && cmd.length() == 1) {
         if (currentRobotMode == MODE_LINE_TRACKING) {
             currentRobotMode = MODE_STANDBY_BLE;
@@ -269,7 +325,7 @@ static void handleUartText(const String& text) {
             bleSendLog("Mode -> STANDBY (Tam dung)\n");
         } else {
             currentRobotMode = MODE_LINE_TRACKING;
-            bleSendLog("Mode -> BAT DAU DO VIEN (Edge Tracking)\n");
+            bleSendLog("Mode -> BAT DAU DO LINE (Co ban)\n");
         }
         return;
     }
@@ -381,9 +437,9 @@ class ServerCallbacks : public BLEServerCallbacks {
 
 class CharacteristicCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* pCharacteristic) override {
-        std::string rxValue = pCharacteristic->getValue();
+        const auto rxValue = pCharacteristic->getValue();
         if (rxValue.length() > 0) {
-            const uint8_t* rawData = (const uint8_t*)rxValue.data();
+            const uint8_t* rawData = (const uint8_t*)rxValue.c_str();
             size_t len = rxValue.length();
 
             // Neu bat dau bang '!B' -> Goi tin Controller Pad cua Bluefruit
@@ -469,6 +525,7 @@ static void pumpBleTxQueue(unsigned long now) {
 }
 
 void bleControllerUpdate() {
+    pollSerialReverseTime();
     static bool wasConnected = false;
     static bool retryAdvertising = false;
     static unsigned long disconnectedAt = 0;

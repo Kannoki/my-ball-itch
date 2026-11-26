@@ -54,8 +54,10 @@ bool motorDriverUpdate();
  * @brief API chinh: dat van toc do cho 2 ben dong co.
  * @param vL Van toc do ben trai (-1000 den +1000, so am la chay lui)
  * @param vR Van toc do ben phai (-1000 den +1000, so am la chay lui)
+ * @param powerPercent Phan tram PWM dau ra; mac dinh 100 cho lenh tay.
+ *                     Chi do line tu dong truyen MOTOR_OUTPUT_PERCENT.
  */
-void runLR(int vL, int vR);
+void runLR(int vL, int vR, int powerPercent = 100);
 
 /**
  * @brief Di thang toi truoc (ca hai ben cung chieu)
