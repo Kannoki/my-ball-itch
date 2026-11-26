@@ -43,7 +43,9 @@ IR 8 mắt mặc định **HIGH = đen**, dựa trên mẫu nền trắng đã �
 
 #### Chuỗi servo trên xe 8 mắt
 
-Khi bật dò line, servo 2 và 3 về **180°**. Nếu xe đang đi thẳng, gặp mẫu cả 8 mắt đen rồi bắt lại line thẳng liên tục **200 ms**, xe thực hiện lần lượt:
+Khi bật dò line, servo 2 và 3 về **180°**. Xe bám line thẳng liên tục **200 ms** để xác nhận đã rời vạch xuất phát và cho phép nhận trạm servo. Trước thời điểm này, mẫu cả 8 mắt đen chỉ cho xe đi thẳng; mất line sau vạch xuất phát sẽ dừng chờ line.
+
+Mỗi lượt bật dò line xử lý tối đa **3 trạm**, tương ứng ba vạch ngang bên phải trên sân. Ở mỗi trạm, xe đang đi thẳng gặp mẫu cả 8 mắt đen, rồi bắt lại line thẳng liên tục **200 ms**, sẽ thực hiện lần lượt:
 
 1. Xoay phải tại chỗ **90°**, rồi lùi thẳng **2 giây** theo cài đặt mặc định.
 2. Đưa servo 2 về **0°**, chờ **600 ms** theo mặc định, rồi đưa servo 3 về **45°**.
@@ -51,6 +53,10 @@ Khi bật dò line, servo 2 và 3 về **180°**. Nếu xe đang đi thẳng, g�
 4. Xoay trái **45°**, tiến bằng thời gian đã lùi, xoay trái **90°**, rồi tiếp tục dò line.
 
 `CROSS_REVERSE_DEFAULT_MS` ở đầu [include/config.h](include/config.h) đặt thời gian lùi mặc định. Gửi `REV` để xem thời gian hiện tại hoặc `REV 2500` để đặt 2,5 giây cho lần chạy tiếp theo. Dùng tab BLE UART hoặc Serial Monitor **115200 baud** có ký tự xuống dòng. Cài đặt qua UART có hiệu lực đến khi khởi động lại.
+
+Sau khi hoàn thành một trạm, xe phải bám line thẳng liên tục **200 ms** trước khi được nhận trạm kế tiếp. Việc đọc lại vạch trong lúc thao tác hoặc trước khi đủ khoảng xác nhận này sẽ được bỏ qua. Sau trạm thứ ba, xe tiếp tục dò line. Bật lại chế độ dò line bắt đầu một lượt mới với bộ đếm về 0.
+
+Cách nhận trạm giả định xe xuất phát tại chữ T và ba trạm là các vạch toàn bề ngang tiếp theo sau khi rời start. Cảm biến line xác định trạm theo mẫu đọc, nên một giao lộ khác tạo cùng chuỗi tín hiệu cũng có thể được tính là trạm. Khoảng line thẳng giữa các vạch cần đủ thời gian xác nhận 200 ms.
 
 Firmware ước lượng góc quay và vị trí quay về bằng thời gian chạy motor. Hằng số `CROSS_TURN_45_MS` và `CROSS_SERVO_SETTLE_MS` dùng để hiệu chỉnh thời gian quay và chờ servo trên xe thật.
 

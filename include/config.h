@@ -6,6 +6,7 @@
 // Chuoi thao tac sau giao lo 8 mat. Goc quay can hieu chinh tren xe that.
 #define CROSS_REVERSE_DEFAULT_MS  2000
 #define CROSS_FORWARD_CONFIRM_MS   200
+#define CROSS_SEQUENCE_LIMIT          3 // Ba vach ngang thao tac sau vach xuat phat
 #define CROSS_TURN_45_MS           300
 #define CROSS_SERVO_SETTLE_MS       600
 

@@ -55,6 +55,12 @@ struct LineTrackingState {
     unsigned long retryElapsed = 0;
     LineAction retryAction = LINE_STOP;
 
+    bool startupComplete = false;
+    bool sequenceArmed = false;
+    bool confirmingCrossClear = false;
+    unsigned long crossClearStartedAt = 0;
+    unsigned int completedSequences = 0;
+
     bool awaitingCrossForward = false;
     bool confirmingCrossForward = false;
     unsigned long crossForwardStartedAt = 0;
@@ -142,6 +148,9 @@ static void updateCrossSequence(unsigned long now) {
 
     if (tracking.sequenceStep == crossStepCount) {
         tracking.sequenceStep = 0;
+        ++tracking.completedSequences;
+        tracking.sampledAt = now;
+        tracking.previousSample = LINE_STOP;
         return;
     }
     ++tracking.sequenceStep;
@@ -174,6 +183,14 @@ static void startRecovery(unsigned long now) {
 }
 
 static void followLine(LineAction action, unsigned long now) {
+    // Vach xuat phat chi dua xe di thang, chua phai moc lui hay tram servo.
+    if (!tracking.startupComplete && action == LINE_CROSS) {
+        clearAnchor();
+        tracking.appliedAction = action;
+        driveLine(action, motorBaseSpeed);
+        return;
+    }
+
     int speed = motorBaseSpeed;
     if (action == LINE_LEFT || action == LINE_RIGHT || action == LINE_CROSS) {
         if (tracking.appliedAction != action) {
@@ -235,11 +252,27 @@ static void updateRecovery(LineAction action, bool confirmed, unsigned long now,
 
 static void trackEightSensors(LineAction action, bool confirmed, unsigned long now, unsigned long elapsed) {
     if (tracking.recovery != Recovery::Follow) {
+        tracking.confirmingCrossClear = false;
         updateRecovery(action, confirmed, now, elapsed);
         return;
     }
 
-    if (action != LINE_FORWARD) tracking.confirmingCrossForward = false;
+    if (action != LINE_FORWARD) {
+        tracking.confirmingCrossForward = false;
+        tracking.confirmingCrossClear = false;
+    }
+    // shortcut: nhan tram qua mau line; can ma moc rieng neu san co giao lo den khac.
+    if (!tracking.sequenceArmed && tracking.completedSequences < CROSS_SEQUENCE_LIMIT &&
+        confirmed && action == LINE_FORWARD) {
+        if (!tracking.confirmingCrossClear) {
+            tracking.confirmingCrossClear = true;
+            tracking.crossClearStartedAt = now;
+        } else if (now - tracking.crossClearStartedAt >= CROSS_FORWARD_CONFIRM_MS) {
+            tracking.startupComplete = true;
+            tracking.sequenceArmed = true;
+            tracking.confirmingCrossClear = false;
+        }
+    }
     if (action == LINE_STOP && tracking.anchor == LINE_STOP) {
         tracking.awaitingCrossForward = false;
         tracking.appliedAction = LINE_STOP;
@@ -253,7 +286,7 @@ static void trackEightSensors(LineAction action, bool confirmed, unsigned long n
         startRecovery(now);
         return;
     }
-    if (action == LINE_CROSS && tracking.appliedAction == LINE_FORWARD) {
+    if (tracking.sequenceArmed && action == LINE_CROSS && tracking.appliedAction == LINE_FORWARD) {
         tracking.awaitingCrossForward = true;
     } else if (action == LINE_LEFT || action == LINE_RIGHT) {
         tracking.awaitingCrossForward = false;
@@ -269,6 +302,8 @@ static void trackEightSensors(LineAction action, bool confirmed, unsigned long n
             tracking.previousSample = LINE_STOP;
             tracking.awaitingCrossForward = false;
             tracking.confirmingCrossForward = false;
+            tracking.sequenceArmed = false;
+            tracking.confirmingCrossClear = false;
             tracking.sequenceStep = 1;
             tracking.sequenceSpeed = motorBaseSpeed;
             tracking.sequenceReverseMs = getCrossReverseDuration();

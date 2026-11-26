@@ -160,7 +160,7 @@ static void testRecoveryAfterStraight() {
     assert(servoEvents.empty());
 
     startTracking();
-    hold(straight, 2);
+    hold(straight, 22);
     hold(cross, 30);
     expectMotor(motorBaseSpeed, motorBaseSpeed);
     hold(0, 2);
@@ -189,6 +189,7 @@ static void testCrossSequence() {
     hold(straight);
     expectMotor(motorBaseSpeed, motorBaseSpeed);
     servoEvents.clear();
+    hold(straight, 20);
 
     assert(getCrossReverseDuration() == CROSS_REVERSE_DEFAULT_MS);
     constexpr uint32_t configuredDuration = 750;
@@ -236,7 +237,7 @@ static void testCrossSequence() {
     assert(servoEvents[3].servo == 2 && servoEvents[3].angle == 180);
     assert(servoEvents[1].at - servoEvents[0].at == CROSS_SERVO_SETTLE_MS);
     assert(servoEvents[3].at - servoEvents[2].at == CROSS_SERVO_SETTLE_MS);
-    hold(straight, 2);
+    hold(straight, 22);
     expectMotor(speed, speed);
 
     hold(cross, 2);
@@ -248,6 +249,73 @@ static void testCrossSequence() {
     hold(0, 30);
     expectMotor(0, 0);
 }
+
+static void testStartBar() {
+    startTracking();
+    hold(cross, 30);
+    hold(0, 2);
+    expectMotor(0, 0);
+    hold(straight, 5);
+    hold(cross, 2);
+    hold(straight, 22);
+    expectMotor(motorBaseSpeed, motorBaseSpeed);
+    assert(servoEvents.empty());
+    for (const auto& event : motorEvents) {
+        assert(event.left >= 0 && event.right >= 0);
+    }
+
+    // Sau khi roi start, giao lo mat line van lui tim line.
+    hold(cross, 3);
+    hold(0, 2);
+    expectMotor(-motorBaseSpeed, -motorBaseSpeed);
+}
+
+static void testThreeServoStations() {
+    startTracking();
+    setCrossReverseDuration(100);
+    hold(cross, 5);
+    hold(straight, 22);
+
+    // Goc re chi thay mot ben se khong tinh thanh tram servo.
+    hold(leftOnly, 3);
+    hold(straight, 25);
+    hold(rightOnly, 3);
+    hold(straight, 25);
+    assert(servoEvents.empty());
+
+    for (unsigned int station = 0; station < 3; ++station) {
+        hold(cross, 5);
+        hold(straight, 22);
+        expectMotor(motorBaseSpeed, -motorBaseSpeed);
+        hold(cross, 600);
+        assert(servoEvents.size() == (station + 1) * 4);
+
+        // Doc lai cung vach sau khi quay ve khong lap chuoi.
+        hold(straight, 5);
+        hold(cross, 5);
+        hold(straight, 22);
+        expectMotor(motorBaseSpeed, motorBaseSpeed);
+        assert(servoEvents.size() == (station + 1) * 4);
+    }
+
+    hold(cross, 5);
+    hold(straight, 100);
+    expectMotor(motorBaseSpeed, motorBaseSpeed);
+    assert(servoEvents.size() == 12);
+
+    // Het ba tram, co che lui tim line van hoat dong.
+    hold(cross, 5);
+    hold(0, 2);
+    expectMotor(-motorBaseSpeed, -motorBaseSpeed);
+
+    // Bat lai che do tu dong tao mot luot chay moi.
+    startTracking();
+    hold(straight, 22);
+    hold(cross, 5);
+    hold(straight, 22);
+    expectMotor(motorBaseSpeed, -motorBaseSpeed);
+}
+
 #endif
 
 int main() {
@@ -256,6 +324,8 @@ int main() {
     testTurnRecovery();
     testRecoveryAfterStraight();
     testCrossSequence();
+    testStartBar();
+    testThreeServoStations();
 #else
     startTracking();
     hold(0x04, 2);
