@@ -55,7 +55,8 @@ bool motorDriverUpdate();
  * @param vL Van toc do ben trai (-1000 den +1000, so am la chay lui)
  * @param vR Van toc do ben phai (-1000 den +1000, so am la chay lui)
  */
-void runLR(int vL, int vR);
+// Lenh thuong mac dinh 100%; auto truyen MOTOR_OUTPUT_PERCENT rieng.
+void runLR(int vL, int vR, int powerPercent = 100);
 
 /**
  * @brief Di thang toi truoc (ca hai ben cung chieu)

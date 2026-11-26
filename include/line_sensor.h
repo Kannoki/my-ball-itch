@@ -63,7 +63,7 @@ String getSensorTelemetryDetailed();
 
 /**
  * @brief Tinh toan vi tri lech tam cua duong line
- * @return Sai so theo vi tri cac mat trong LINE_TRACKING_MASK; IR 8 mat: -2.5..+2.5.
+ * @return Sai so theo vi tri cac mat trong LINE_TRACKING_MASK; IR 8 mat: -3.5..+3.5.
  *         0.0 la line dang o giua (S4 & S5 voi thanh 8 mat).
  */
 float getLinePosition();
@@ -76,10 +76,8 @@ struct LineEdge {
 // Chi so sanh cac mat trong LINE_TRACKING_MASK, giu dung khoang cach vat ly.
 bool findLineEdge(uint8_t raw, uint8_t mode, float reference, LineEdge& edge);
 
-// IR 8 mat: ca 4 mat duoc chon active hoac nhieu cum roi rac khong cho vi tri line.
-// Ngoai le: -#-..-#- la mau can tam hop le (S2/S7 active doi xung).
-// Kiem tra cross tren du 8 mat TRUOC ham nay.
-// Khong the phan biet nen it phan xa, khong co mat san va mau den chi tu GPIO.
+// Toan active khong cho vi tri line; controller xu ly cross rieng.
+// Nhieu cum duoc controller chon theo vi tri truoc do, khong loai la ambiguous.
 bool isLineSampleAmbiguous(uint8_t raw);
 
 /**

@@ -74,7 +74,7 @@ enum EdgeMode {
 // nen runTurnLeft LUON xoay sang trai du doi mau chan hay kiem tra chan.
 #define MOTOR_SPEED_SCALE        1000  // Gia tri toi da cua van toc do chuan hoa
 #define MOTOR_SPEED_STEP          40   // Buoc tang/giam khi lenh '+'/'-' qua BLE (~10/255)
-#define MOTOR_OUTPUT_PERCENT      88
+#define MOTOR_OUTPUT_PERCENT      88 // Cong suat rieng cho lenh do line tu dong
 
 // Van toc do mac dinh (don vi chuan hoa)
 #define MOTOR_BASE_SPEED         725   // ~185/255 : toc do co ban khi di thang
@@ -144,16 +144,15 @@ enum EdgeMode {
 #endif
 #define SENSOR_MASK       static_cast<uint8_t>((1U << NUM_SENSORS) - 1U)
 
-// Van doc du NUM_SENSORS; mask chi ap dung khi tinh line. Nhan cross IR dung du 8 mat.
-#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
-#define LINE_TRACKING_MASK       static_cast<uint8_t>(0x5A) // S2, S4, S5, S7 (danh so 1..8)
-#define LINE_TRACKING_FIRST_BIT  static_cast<uint8_t>(0x02) // S2
-#define LINE_TRACKING_MAX_POS    2.5f
-#else
+// Doc va tinh line bang toan bo cac mat, khong bo qua S1/S3/S6/S8.
 #define LINE_TRACKING_MASK       SENSOR_MASK
 #define LINE_TRACKING_FIRST_BIT  static_cast<uint8_t>(0x01)
 #define LINE_TRACKING_MAX_POS    ((NUM_SENSORS - 1) * 0.5f)
-#endif
+
+// Thu nghiem IR 8 mat: nho huong quay cho den khi line tro lai giua.
+#define LINE_TURN_TIMEOUT_MS     1000
+#define LINE_TURN_MIN_MS         80  // Khong nham line cu thanh line moi ngay khi bat dau quay
+#define LINE_TURN_POSITION       2.0f // Lech >= 2 buoc mat va cham mep thi vao che do re
 
 #ifdef BOARD_ESP32_38PIN
 // Day chan cam bien cho ESP32 38-pin (cum GPIO ben phai, ho tro INPUT & INPUT_PULLUP)

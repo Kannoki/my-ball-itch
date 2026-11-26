@@ -77,6 +77,7 @@ struct MotorChannel {
     const int in2;
     const int pwmPin;
     const int pwmChannel;
+    int outputPercent;
 
     // Huong dien tinh hien tai tren chan huong (dang giu khi PWM = 0)
     int electricalDirection;   // -1 / 0 / +1
@@ -98,11 +99,11 @@ struct MotorChannel {
 // Kenh vat ly: B = OUT3/OUT4 (trai mac dinh), A = OUT1/OUT2 (phai mac dinh)
 static MotorChannel channelB{
     PIN_MOTOR_LEFT_IN3, PIN_MOTOR_LEFT_IN4, PIN_MOTOR_LEFT_ENB, PWM_CH_LEFT,
-    0, 0, 0, 0, 0, 0, false, 0, 0, 0
+    100, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
 };
 static MotorChannel channelA{
     PIN_MOTOR_RIGHT_IN1, PIN_MOTOR_RIGHT_IN2, PIN_MOTOR_RIGHT_ENA, PWM_CH_RIGHT,
-    0, 0, 0, 0, 0, 0, false, 0, 0, 0
+    100, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
 };
 
 // Lenh BLE chay tren task khac voi vong lap cap nhat PWM.
@@ -111,13 +112,13 @@ static std::mutex motorMutex;
 // ------------------------------------------------------------------------------
 // Ghi PWM / GPIO
 // ------------------------------------------------------------------------------
-static int motorOutputDuty(int duty) {
-    return (constrain(duty, 0, 255) * MOTOR_OUTPUT_PERCENT) / 100;
+static int motorOutputDuty(const MotorChannel& motor, int duty) {
+    return (constrain(duty, 0, 255) * motor.outputPercent) / 100;
 }
 
 static void writeMotorPwm(const MotorChannel& motor, int duty) {
     // Scale sau min PWM/dead-band/de-pa de khong bi cac nguong nay day toc do len lai.
-    const int outputDuty = motorOutputDuty(duty);
+    const int outputDuty = motorOutputDuty(motor, duty);
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
     ledcWrite(motor.pwmPin, outputDuty);
 #else
@@ -165,6 +166,7 @@ void motorDriverInit() {
 #endif
 
     auto resetChannel = [](MotorChannel& motor) {
+        motor.outputPercent = 100;
         motor.electricalDirection = 0;
         motor.commandedDirection = 0;
         motor.targetDuty = 0;
@@ -354,7 +356,7 @@ static void updateMotorChannel(MotorChannel& motor, int speed, bool invert,
 // ------------------------------------------------------------------------------
 // API DIEU KHIEN CHINH
 // ------------------------------------------------------------------------------
-void runLR(int vL, int vR) {
+void runLR(int vL, int vR, int powerPercent) {
     vL = constrain(vL, -MOTOR_SPEED_SCALE, MOTOR_SPEED_SCALE);
     vR = constrain(vR, -MOTOR_SPEED_SCALE, MOTOR_SPEED_SCALE);
 
@@ -367,6 +369,16 @@ void runLR(int vL, int vR) {
     // chứ không phải của chính kênh đó.
     MotorChannel* leftChannel = runtimeConfig.swapLeftRight ? &channelA : &channelB;
     MotorChannel* rightChannel = runtimeConfig.swapLeftRight ? &channelB : &channelA;
+
+    // Khi dung giu power cu de khong tang PWM bat ngo trong luc ramp xuong 0.
+    if (vL != 0 && leftChannel->outputPercent != constrain(powerPercent, 0, 100)) {
+        leftChannel->outputPercent = constrain(powerPercent, 0, 100);
+        writeMotorPwm(*leftChannel, leftChannel->appliedDuty);
+    }
+    if (vR != 0 && rightChannel->outputPercent != constrain(powerPercent, 0, 100)) {
+        rightChannel->outputPercent = constrain(powerPercent, 0, 100);
+        writeMotorPwm(*rightChannel, rightChannel->appliedDuty);
+    }
 
     updateMotorChannel(*leftChannel, vL, runtimeConfig.invertLeft,
                         runtimeConfig.deadbandLeft, runtimeConfig.minPwmLeft, now);
@@ -475,11 +487,11 @@ String getMotorDiagnostics() {
 
     s += "Base : " + String(motorBaseSpeed) + " (chuan hoa -" + String(MOTOR_SPEED_SCALE) +
          "..+" + String(MOTOR_SPEED_SCALE) + ")\n";
-    s += "Output: " + String(MOTOR_OUTPUT_PERCENT) + "% (PWM thuc te)\n";
+    s += "Auto power: " + String(MOTOR_OUTPUT_PERCENT) + "% | Manual: 100%\n";
 
     s += "\n-- BEN TRAI (OUT3/OUT4, ENB=GPIO " + String(PIN_MOTOR_LEFT_ENB) + ") --\n";
     s += "  lenh=" + String(channelB.commandedSpeed) + " dir=" + String(channelB.electricalDirection);
-    s += " duty=" + String(motorOutputDuty(channelB.appliedDuty)) + "/" + String(motorOutputDuty(channelB.targetDuty));
+    s += " duty=" + String(motorOutputDuty(channelB, channelB.appliedDuty)) + "/" + String(motorOutputDuty(channelB, channelB.targetDuty));
     if (channelB.boosting) s += " [DEP-A]";
     s += "\n";
     s += "  IN3(GPIO " + String(PIN_MOTOR_LEFT_IN3) + ")=" + String(digitalRead(PIN_MOTOR_LEFT_IN3));
@@ -488,7 +500,7 @@ String getMotorDiagnostics() {
 
     s += "\n-- BEN PHAI (OUT1/OUT2, ENA=GPIO " + String(PIN_MOTOR_RIGHT_ENA) + ") --\n";
     s += "  lenh=" + String(channelA.commandedSpeed) + " dir=" + String(channelA.electricalDirection);
-    s += " duty=" + String(motorOutputDuty(channelA.appliedDuty)) + "/" + String(motorOutputDuty(channelA.targetDuty));
+    s += " duty=" + String(motorOutputDuty(channelA, channelA.appliedDuty)) + "/" + String(motorOutputDuty(channelA, channelA.targetDuty));
     if (channelA.boosting) s += " [DEP-A]";
     s += "\n";
     s += "  IN1(GPIO " + String(PIN_MOTOR_RIGHT_IN1) + ")=" + String(digitalRead(PIN_MOTOR_RIGHT_IN1));

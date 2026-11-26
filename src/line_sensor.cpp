@@ -1,4 +1,5 @@
 #include "line_sensor.h"
+#include "line_tracking.h"
 
 // Mang chua cac chan GPIO cua cam bien theo thu tu tu trai qua phai
 static const uint8_t sensorPins[NUM_SENSORS] = {
@@ -126,6 +127,11 @@ float getLinePosition() {
 uint8_t edgeFollowMode = EDGE_FOLLOW_MODE;
 
 void toggleEdgeFollowMode() {
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    // Nhanh thu nghiem IR chi bam tam cum line; khong doi sang bam mot mep.
+    edgeFollowMode = EDGE_CENTER_LINE;
+    return;
+#endif
     if (edgeFollowMode == EDGE_WHITE_LEFT_BLACK_RIGHT) {
         edgeFollowMode = EDGE_BLACK_LEFT_WHITE_RIGHT;
     } else if (edgeFollowMode == EDGE_BLACK_LEFT_WHITE_RIGHT) {
@@ -139,6 +145,9 @@ void toggleEdgeFollowMode() {
 }
 
 const char* getEdgeFollowModeName() {
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    return "8-SENSOR CLUSTER + TURN MEMORY";
+#endif
     switch (edgeFollowMode) {
         case EDGE_WHITE_LEFT_BLACK_RIGHT: return "TRANG TRAI - DEN PHAI";
         case EDGE_BLACK_LEFT_WHITE_RIGHT: return "DEN TRAI - TRANG PHAI";
@@ -150,24 +159,8 @@ const char* getEdgeFollowModeName() {
 
 bool isLineSampleAmbiguous(uint8_t raw) {
 #if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
-    raw &= LINE_TRACKING_MASK;
-    if (raw == LINE_TRACKING_MASK) return true;
-
-    // Mau thuc te -#-..-#-: S2/S7 active doi xung, S4/S5 inactive, van la di thang.
-    constexpr uint8_t centeredOuterPair = (1U << 1) | (1U << 6);
-    if (raw == centeredOuterPair) return false;
-
-    // Cac mau nhieu cum roi khac van can loai tru.
-    // Khong so sanh cac bit cua S1, S3, S6, S8 du chung co thay doi.
-    bool previousActive = false;
-    unsigned activeRuns = 0;
-    for (int i = 0; i < NUM_SENSORS; ++i) {
-        if (!(LINE_TRACKING_MASK & (1 << i))) continue;
-        const bool active = raw & (1 << i);
-        if (active && !previousActive) ++activeRuns;
-        previousActive = active;
-    }
-    return activeRuns > 1;
+    // Chi toan active la khong co vi tri; nhieu cum se duoc chon theo lich su o controller.
+    return (raw & SENSOR_MASK) == SENSOR_MASK;
 #else
     (void)raw;
     return false;
@@ -239,7 +232,7 @@ static bool hasManyBlackSensors(uint8_t raw) {
 
 bool isCrossLinePattern(uint8_t raw) {
 #if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
-    // S1/S3/S6/S8 chi tham gia nhan cross, khong tham gia dieu chinh huong bam line.
+    // Ca 8 mat tham gia dieu chinh huong va nhan cross.
     return (raw & SENSOR_MASK) == SENSOR_MASK;
 #else
     return hasManyBlackSensors(raw);
@@ -259,7 +252,7 @@ static String getSensorStatus(uint8_t raw) {
     if (isCrossLinePattern(raw)) return "CROSS";
     raw &= LINE_TRACKING_MASK;
     if (raw == 0x00) return "NO_LINE";
-    if (isLineSampleAmbiguous(raw)) return "AMBIGUOUS";
+    if (isLineSampleAmbiguous(raw)) return "NO_CONTRAST";
 #else
     if (raw == 0x00) return "ALL_WHITE";
     if (raw == SENSOR_MASK) return "ALL_BLACK";
@@ -301,7 +294,11 @@ String getSensorTelemetryCompact() {
     directBuf[NUM_SENSORS] = '\0';
     lineBuf[NUM_SENSORS]   = '\0';
 
-    return "R:" + String(directBuf) + " [" + String(lineBuf) + "] U:" + getTrackingPattern(raw) + " " + getSensorStatus(raw) + "\n";
+    String message = "R:" + String(directBuf) + " [" + String(lineBuf) + "] " + getSensorStatus(raw);
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    message += " Track:" + String(getLineTrackingStatus());
+#endif
+    return message + "\n";
 }
 
 String getSensorTelemetryDetailed() {
@@ -352,6 +349,9 @@ void printSensorDebug() {
     lineBuf[NUM_SENSORS] = '\0';
 
     String status = getSensorStatus(raw);
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    status += " Track:" + String(getLineTrackingStatus());
+#endif
     Serial.printf("[Sensor] GPIO: %s | Raw: [%s] | Use: [%s] | Active=%s | Pullup=%s | Status: %s\n",
                   pinBuf, lineBuf, getTrackingPattern(raw).c_str(), (lineActiveState == HIGH) ? "HIGH" : "LOW",
                   sensorPullupEnabled ? "PULLUP" : "FLOAT",

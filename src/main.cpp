@@ -6,6 +6,7 @@
 #include "servo2.h"
 #include "servo3.h"
 #include "ble_controller.h"
+#include "line_tracking.h"
 
 struct LineTrackingState {
     unsigned long sampledAt = 0;
@@ -120,7 +121,7 @@ static int quantizePwm(int pwm) {
     return (pwm / 5) * 5;
 }
 
-static void processLineTracking() {
+static void processLegacyLineTracking() {
     const uint8_t mode = edgeFollowMode;
     const uint8_t activeLevel = lineActiveState;
     if (tracking.mode != mode || tracking.activeLevel != activeLevel) {
@@ -231,6 +232,25 @@ static void processLineTracking() {
     runLR(pwmToSpeed(quantizePwm(leftSpeed)), pwmToSpeed(quantizePwm(rightSpeed)));
 }
 
+static void processLineTracking() {
+#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
+    const unsigned long now = millis();
+    if (tracking.activeLevel != lineActiveState) {
+        tracking.activeLevel = lineActiveState;
+        resetLineTracking();
+        stopMotion();
+        return;
+    }
+    if (now - tracking.sampledAt < PID_SAMPLE_INTERVAL_MS) return;
+    tracking.sampledAt = now;
+    updateLineTracking(readRawSensors(), now, speedToPwm(motorBaseSpeed));
+    runLR(pwmToSpeed(getLineLeftPwm()), pwmToSpeed(getLineRightPwm()), MOTOR_OUTPUT_PERCENT);
+#else
+    // Cac combo khac giu thuat toan cua recovery trong thu nghiem nay.
+    processLegacyLineTracking();
+#endif
+}
+
 void loop() {
     motorDriverUpdate();
     bleControllerUpdate();
@@ -246,6 +266,7 @@ void loop() {
     if (isTracking) {
         if (!wasTracking) {
             tracking = {};
+            resetLineTracking();
             stopMotion();
         }
         processLineTracking();
