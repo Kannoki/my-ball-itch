@@ -94,10 +94,12 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
                     runBackward(MOTOR_MANUAL_SPEED);
                     break;
                 case '7': // LEFT - Re trai
-                    runTurnLeft(MOTOR_MANUAL_SPEED);
+                    runArcLeft(MOTOR_MANUAL_SPEED);
+                    bleSendLog("Manual LEFT: re cung, hai cap cung tien\n");
                     break;
                 case '8': // RIGHT - Re phai
-                    runTurnRight(MOTOR_MANUAL_SPEED);
+                    runArcRight(MOTOR_MANUAL_SPEED);
+                    bleSendLog("Manual RIGHT: re cung, hai cap cung tien\n");
                     break;
                 default:
                     break;
@@ -315,12 +317,12 @@ static void handleUartText(const String& text) {
                 bleSendLog("Moving Backward\n");
                 break;
             case 'L': case 'l':
-                runTurnLeft(MOTOR_MANUAL_SPEED);
-                bleSendLog("Turning Left\n");
+                runArcLeft(MOTOR_MANUAL_SPEED);
+                bleSendLog("Manual LEFT: re cung, hai cap cung tien\n");
                 break;
             case 'R': case 'r':
-                runTurnRight(MOTOR_MANUAL_SPEED);
-                bleSendLog("Turning Right\n");
+                runArcRight(MOTOR_MANUAL_SPEED);
+                bleSendLog("Manual RIGHT: re cung, hai cap cung tien\n");
                 break;
             case 'S': case 's':
                 stopMotion();
