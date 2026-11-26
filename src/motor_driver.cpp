@@ -419,6 +419,19 @@ void runLR(int vL, int vR, int powerPercent, bool immediate) {
     updateMotorChannel(*rightChannel, vR, runtimeConfig.invertRight,
                         runtimeConfig.deadbandRight, runtimeConfig.minPwmRight, now);
 
+    // Re bang mot cap: ben duoc lenh 0 phai ngat PWM ngay, khong tiep tuc
+    // tien trong 150 ms ramp xuong. Ben dang chay giu de-pa/ramp thong thuong.
+    if (!immediate && ((vL == 0) != (vR == 0))) {
+        MotorChannel& stopped = vL == 0 ? *leftChannel : *rightChannel;
+        stopped.boosting = false;
+        writeMotorPwm(stopped, 0);
+        writeDirectionPins(stopped, 0);
+        stopped.electricalDirection = 0;
+        stopped.appliedDuty = 0;
+        stopped.rampAccum = 0;
+        stopped.lastRampAt = now;
+    }
+
     if (immediate) {
         // Auto bo ramp nhung van de-pa NGAN khi tu dung sang chay.
         auto applyNow = [now](MotorChannel& motor) {

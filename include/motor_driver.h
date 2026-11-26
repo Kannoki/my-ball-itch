@@ -58,6 +58,7 @@ bool motorDriverUpdate();
 // Lenh thuong mac dinh 100%; auto truyen MOTOR_OUTPUT_PERCENT rieng.
 // immediate=true cho auto: bo ramp, giu san PWM va de-pa ngan.
 // Chi de-pa lan dau hoac sau MOTOR_AUTO_RESTART_MS ngat PWM tren kenh do.
+// Mot ben = 0, ben kia != 0: ben 0 ngat PWM ngay de re, khong ramp xuong.
 void runLR(int vL, int vR, int powerPercent = 100, bool immediate = false);
 
 /**

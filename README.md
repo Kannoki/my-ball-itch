@@ -154,7 +154,7 @@ pio device monitor -b 115200
 2. **Tab Controller → Control Pad:**
    - **Nút `1`**: Bắt đầu / Tạm dừng dò line.
    - **Nút `2` / `3` / `4`**: Đảo góc Servo 1 (`0° ↔ 270°`), Servo 2 (`0° ↔ 180°`), Servo 3 (`0° ↔ 180°`).
-   - **D-Pad (`↑ ↓ ← →`)**: Lái xe thủ công khi đang ở chế độ Standby. `←/→` rẽ theo cung: cả hai cặp cùng tiến, cặp trong chậm hơn cặp ngoài; nhả nút thì dừng. Không gọi lệnh xoay tại chỗ một cặp tiến/một cặp lùi. Với cấu hình mặc định, sau đề-pa/ramp, PWM cặp trong khoảng **165**, cặp ngoài khoảng **220**; đây là PWM, không phải vận tốc đo được. Bán kính rẽ rộng hơn kiểu xoay tại chỗ và cần kiểm tra trên sàn.
+   - **D-Pad (`↑ ↓ ← →`)**: Lái xe thủ công khi đang ở chế độ Standby. `←` ngắt PWM cặp trái, cặp phải tiến; `→` cặp trái tiến, ngắt PWM cặp phải. Cặp được lệnh 0 ngắt ngay, không chờ ramp 150 ms, không bị sàn PWM 165 đẩy lên. Cặp ngoài giữ power thủ công 100%, đề-pa/ramp như trước, PWM chạy khoảng **220**. Ngắt PWM là thả trôi, không giữ bánh đứng yên bằng phanh điện. Nhả nút thì yêu cầu dừng cả hai bên theo cơ chế ramp thông thường. Serial ghi `[Manual] LEFT/RIGHT: Cmd ...` để đối chiếu lệnh theo cặp. Cần kiểm tra khả năng rẽ thực tế trên sàn.
 3. **Tab UART / Terminal (gửi lệnh & xem cảm biến trực tiếp):**
    - Telemetry mỗi `300 ms`: đủ 8 mức GPIO và trạng thái `Track` của bộ điều khiển. Các bit active là mức logic theo cấu hình, không xác nhận màu vật lý.
    - Lệnh nhanh:
@@ -167,7 +167,7 @@ pio device monitor -b 115200
      - `T`: Bật / Tắt luồng telemetry tự động.
      - `+` / `-`: Tăng / Giảm tốc độ cơ bản (`MOTOR_BASE_SPEED`, bước `40`).
      - `2`, `3`, `4` hoặc `S1 <góc/µs>`, `S2 <góc>`, `S3 <góc>`: Điều khiển trực tiếp từng servo.
-     - `F`, `B`, `L`, `R`, `S`: Tiến, lùi, rẽ cung trái, rẽ cung phải, dừng (khi ở Standby). `L/R` dùng cùng kiểu rẽ với D-Pad; gửi `S` để dừng.
+     - `F`, `B`, `L`, `R`, `S`: Tiến, lùi, rẽ trái, rẽ phải, dừng (khi ở Standby). `L/R` dùng cùng kiểu rẽ một cặp tiến/một cặp ngắt PWM với D-Pad; gửi `S` để dừng.
      - `X`: Báo cáo chẩn đoán động cơ (duty, mức GPIO, cực, dead-band, cảnh báo jumper ENA/ENB).
      - `X1`: Tự kiểm tra động cơ — trái tiến → phải tiến → trái lùi → phải lùi.
      - `XI` / `XR` / `XS`: Đảo chiều quay bên trái / bên phải / hoán đổi kênh vật lý 2 bên.

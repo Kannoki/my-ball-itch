@@ -94,12 +94,14 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
                     runBackward(MOTOR_MANUAL_SPEED);
                     break;
                 case '7': // LEFT - Re trai
-                    runArcLeft(MOTOR_MANUAL_SPEED);
-                    bleSendLog("Manual LEFT: re cung, hai cap cung tien\n");
+                    runLR(0, MOTOR_MANUAL_SPEED);
+                    Serial.printf("[Manual] LEFT: Cmd L=0 R=%d\n", MOTOR_MANUAL_SPEED);
+                    bleSendLog("Manual LEFT: trai ngat PWM, phai tien\n");
                     break;
                 case '8': // RIGHT - Re phai
-                    runArcRight(MOTOR_MANUAL_SPEED);
-                    bleSendLog("Manual RIGHT: re cung, hai cap cung tien\n");
+                    runLR(MOTOR_MANUAL_SPEED, 0);
+                    Serial.printf("[Manual] RIGHT: Cmd L=%d R=0\n", MOTOR_MANUAL_SPEED);
+                    bleSendLog("Manual RIGHT: trai tien, phai ngat PWM\n");
                     break;
                 default:
                     break;
@@ -317,12 +319,14 @@ static void handleUartText(const String& text) {
                 bleSendLog("Moving Backward\n");
                 break;
             case 'L': case 'l':
-                runArcLeft(MOTOR_MANUAL_SPEED);
-                bleSendLog("Manual LEFT: re cung, hai cap cung tien\n");
+                runLR(0, MOTOR_MANUAL_SPEED);
+                Serial.printf("[Manual] LEFT: Cmd L=0 R=%d\n", MOTOR_MANUAL_SPEED);
+                bleSendLog("Manual LEFT: trai ngat PWM, phai tien\n");
                 break;
             case 'R': case 'r':
-                runArcRight(MOTOR_MANUAL_SPEED);
-                bleSendLog("Manual RIGHT: re cung, hai cap cung tien\n");
+                runLR(MOTOR_MANUAL_SPEED, 0);
+                Serial.printf("[Manual] RIGHT: Cmd L=%d R=0\n", MOTOR_MANUAL_SPEED);
+                bleSendLog("Manual RIGHT: trai tien, phai ngat PWM\n");
                 break;
             case 'S': case 's':
                 stopMotion();
