@@ -7,19 +7,13 @@
 #include "servo3.h"
 #include "ble_controller.h"
 
+// Chi nho lan doc truoc va thoi diem bat dau qua nga tu.
 struct LineTrackingState {
     unsigned long sampledAt = 0;
-    unsigned long lostAt = 0;
-    uint8_t previousRaw = 0;
-    uint8_t olderRaw = 0;
-    uint8_t sampleCount = 0;
-    uint8_t mode = EDGE_FOLLOW_MODE;
+    LineAction previousAction = LINE_STOP;
     uint8_t activeLevel = LINE_ACTIVE_STATE;
-    LineEdge lastEdge = {0.0f, EDGE_AUTO};
-    float filteredError = 0.0f;
-    bool hasPreviousError = false;
-    bool sharpTurn = false;
-    int searchDirection = 0;
+    bool crossing = false;
+    unsigned long crossStartedAt = 0;
 };
 
 static LineTrackingState tracking;
@@ -59,138 +53,65 @@ void setup() {
     Serial.println("==================================================");
 }
 
-// Chuyen van toc do chuan hoa (-1000..+1000) sang duty PWM (0-255) va nguoc lai.
-// He so PID duoc giu nguyen tren thang do PWM de khong phai chinh lai.
-static int speedToPwm(int normalizedSpeed) {
-    const int magnitude = constrain(abs(normalizedSpeed), 0, MOTOR_SPEED_SCALE);
-    return (int)((long)magnitude * 255L / MOTOR_SPEED_SCALE);
-}
-
-static int pwmToSpeed(int pwm) {
-    return (int)((long)constrain(pwm, -255, 255) * MOTOR_SPEED_SCALE / 255L);
-}
-
-static void searchForLine(uint8_t raw, unsigned long now, int baseSpeedPwm) {
-    if (tracking.searchDirection == 0) {
-        tracking.lostAt = now;
-        tracking.hasPreviousError = false;
-        tracking.sharpTurn = false;
-
-        const EdgeMode polarity = tracking.mode == EDGE_AUTO ? tracking.lastEdge.polarity : static_cast<EdgeMode>(tracking.mode);
-        if (fabsf(tracking.lastEdge.position) >= 1.0f) {
-            tracking.searchDirection = tracking.lastEdge.position < 0.0f ? -1 : 1;
-        } else if ((polarity == EDGE_WHITE_LEFT_BLACK_RIGHT || polarity == EDGE_BLACK_LEFT_WHITE_RIGHT) &&
-                   (raw == 0x00 || raw == SENSOR_MASK)) {
-            const bool whiteOnLeft = polarity == EDGE_WHITE_LEFT_BLACK_RIGHT;
-            const bool onWhite = raw == 0x00;
-            tracking.searchDirection = (onWhite == whiteOnLeft) ? 1 : -1;
-        } else {
-            tracking.searchDirection = tracking.lastEdge.position < 0.0f ? -1 : 1;
-        }
-    }
-
-    // Mau tron chi con mep nguoc chieu: tim ve phia cac mat dang thay den.
-    if (raw != 0x00 && raw != SENSOR_MASK) {
-        tracking.searchDirection = (raw & 0x01) ? -1 : 1;
-    }
-
-    if (now - tracking.lostAt >= LINE_SEARCH_TIMEOUT_MS) {
-        stopMotion();
-    } else if (tracking.searchDirection < 0) {
-        runTurnLeft(pwmToSpeed(min(baseSpeedPwm, MOTOR_SEARCH_SPEED_PWM)));
-    } else {
-        runTurnRight(pwmToSpeed(min(baseSpeedPwm, MOTOR_SEARCH_SPEED_PWM)));
-    }
-}
-
-// Ben trong cua vong tron se dung that (0) khi yeu cau PWM nho hon dead-band,
-// thay vi bi "keo hai" o duty nho khong duoc chay -> xe om cong sach hon.
-static int clampCurveMotorSpeed(int rawSpeed, int minPwm) {
-    const int deadband = getMotorRuntimeConfig().deadbandLeft;
-    if (rawSpeed < deadband) {
-        return 0;
-    }
-    return constrain(rawSpeed, minPwm, MOTOR_MAX_SPEED_PWM);
-}
-
-// Lam tron duty theo buoc 5/255 de tranh PWM nhieu lien tuc gay tieng keo.
-static int quantizePwm(int pwm) {
-    return (pwm / 5) * 5;
-}
-
+// Doc line moi 10 ms. Cung mot ket luan hai lan lien tiep moi doi huong.
 static void processLineTracking() {
-    const uint8_t mode = edgeFollowMode;
-    const uint8_t activeLevel = lineActiveState;
-    if (tracking.mode != mode || tracking.activeLevel != activeLevel) {
+    if (tracking.activeLevel != lineActiveState) {
         tracking = {};
-        tracking.mode = mode;
-        tracking.activeLevel = activeLevel;
+        tracking.activeLevel = lineActiveState;
         stopMotion();
+        return;
     }
 
     const unsigned long now = millis();
-    const unsigned long elapsed = now - tracking.sampledAt;
-    if (elapsed < PID_SAMPLE_INTERVAL_MS) {
-        return;
-    }
+    if (now - tracking.sampledAt < LINE_SAMPLE_INTERVAL_MS) return;
     tracking.sampledAt = now;
 
-    const uint8_t raw = readRawSensors();
-    // Moi bit can xuat hien trong it nhat hai trong ba mau.
-    const uint8_t filteredRaw = (raw & tracking.previousRaw) |
-                                (raw & tracking.olderRaw) |
-                                (tracking.previousRaw & tracking.olderRaw);
-    tracking.olderRaw = tracking.previousRaw;
-    tracking.previousRaw = raw;
-    if (tracking.sampleCount < 2) {
-        ++tracking.sampleCount;
+    const LineAction action = getLineAction(readRawSensors());
+    // Het gio qua cross thi dung, ke ca khi mau moi chua du hai lan xac nhan.
+    if (tracking.crossing && now - tracking.crossStartedAt >= CROSS_LINE_PASS_DELAY_MS) {
+        stopMotion();
+    }
+
+    // Khong thay line: dung, khong tu xoay di tim.
+    if (action == LINE_STOP) {
+        tracking.previousAction = LINE_STOP;
+        tracking.crossing = false;
+        stopMotion();
         return;
     }
 
-    const int baseSpeedPwm = motorBaseSpeed > 0 ? speedToPwm(motorBaseSpeed) : MOTOR_BASE_SPEED_PWM;
-    LineEdge edge;
-    if (!findLineEdge(filteredRaw, mode, tracking.lastEdge.position, edge)) {
-        searchForLine(filteredRaw, now, baseSpeedPwm);
+    // Bo qua mot lan doc bat thuong. Hai lan giong nhau thi moi chay.
+    if (action != tracking.previousAction) {
+        tracking.previousAction = action;
         return;
     }
 
-    tracking.searchDirection = 0;
-    tracking.lastEdge = edge;
+    const int speed = motorBaseSpeed;
+    const int power = MOTOR_OUTPUT_PERCENT; // Chi cac lenh auto o day dung power nay.
 
-    float derivative = 0.0f;
-    if (tracking.hasPreviousError) {
-        const float change = LINE_ERROR_FILTER_ALPHA * (edge.position - tracking.filteredError);
-        tracking.filteredError += change;
-        derivative = change * PID_SAMPLE_INTERVAL_MS / elapsed;
-    } else {
-        tracking.filteredError = edge.position;
-        tracking.hasPreviousError = true;
-    }
-
-    const float error = tracking.filteredError;
-    const float turnThreshold = tracking.sharpTurn ? SHARP_TURN_EXIT_THRESHOLD : SHARP_TURN_THRESHOLD;
-    tracking.sharpTurn = fabsf(error) >= turnThreshold && fabsf(edge.position) > SHARP_TURN_EXIT_THRESHOLD &&
-                         error * edge.position > 0.0f;
-    if (tracking.sharpTurn) {
-        const int speedPwm = min(baseSpeedPwm, MOTOR_SPIN_SPEED_PWM);
-        if (error < 0.0f) runTurnLeft(pwmToSpeed(speedPwm));
-        else runTurnRight(pwmToSpeed(speedPwm));
+    // Ca 8 mat den: di thang qua nga tu, toi da 140 ms roi dung neu van con den.
+    if (action == LINE_CROSS) {
+        if (!tracking.crossing) {
+            tracking.crossing = true;
+            tracking.crossStartedAt = now;
+        }
+        if (now - tracking.crossStartedAt < CROSS_LINE_PASS_DELAY_MS) {
+            runLR(speed, speed, power);
+        } else {
+            stopMotion();
+        }
         return;
     }
+    tracking.crossing = false;
 
-    const int cruiseSpeed = max(MOTOR_MIN_SPEED_PWM,
-                                baseSpeedPwm - static_cast<int>(LINE_CURVE_SPEED_DROP * fabsf(error)));
-    const float correction = PID_KP * error + PID_KD * derivative;
-
-    // Hieu chinh theo he van toc do chuan hoa: ben trai tang, ben phai giam
-    // khi xe lech sang phai (error > 0) - luon o frame robot, khong phu thuoc
-    // INVERT_*/SWAP_* (do cuc thuoc tinh duoc apply o tang driver).
-    const int leftSpeed = clampCurveMotorSpeed(
-        static_cast<int>(cruiseSpeed + correction), MOTOR_MIN_PWM_LEFT);
-    const int rightSpeed = clampCurveMotorSpeed(
-        static_cast<int>(cruiseSpeed - correction), MOTOR_MIN_PWM_RIGHT);
-
-    runLR(pwmToSpeed(quantizePwm(leftSpeed)), pwmToSpeed(quantizePwm(rightSpeed)));
+    // Ba lenh co ban: thang, re trai, re phai.
+    if (action == LINE_FORWARD) {
+        runLR(speed, speed, power);
+    } else if (action == LINE_LEFT) {
+        runLR(0, speed, power); // Dung banh trai, chay banh phai.
+    } else if (action == LINE_RIGHT) {
+        runLR(speed, 0, power); // Chay banh trai, dung banh phai.
+    }
 }
 
 void loop() {

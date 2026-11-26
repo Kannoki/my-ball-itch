@@ -34,7 +34,7 @@ Nhìn theo hướng xe chạy tới: `S1 (D1)` ngoài cùng bên **TRÁI** → `
 | **D8 (S8)** | **GPIO 18** | Mắt ngoài cùng bên PHẢI |
 
 - **Chân `IR` / `1R`:** Nếu để trống, 8 LED IR tắt → cảm biến báo **FULL ĐEN**. Dùng camera điện thoại soi để thấy ánh sáng mờ tím hồng.
-- **Mức logic (`LINE_ACTIVE_STATE`):** Mặc định `LOW` (vạch đen = `0`, nền trắng = `1`). Gửi `I` qua BLE UART để đảo nhanh nếu ngược.
+- **Mức logic (`LINE_ACTIVE_STATE`):** Mặc định `HIGH` cho thanh IR 8 mắt hiện dùng: đã đo nền trắng cho `GPIO: 00000000`, nên LOW là nền và HIGH được dùng làm line. Kiểm tra thêm trên vạch đen; gửi `I` qua BLE UART nếu module có logic ngược.
 
 ---
 

@@ -8,25 +8,8 @@
 // ==============================================================================
 enum RobotMode {
     MODE_STANDBY_BLE   = 0, // Khi khoi dong: DUNG YEN CHO, cho phep test tay qua BLE
-    MODE_LINE_TRACKING = 1  // Che do tu dong bam vien (Edge Tracking): CHI CHAY KHI BAM PHIM 1
+    MODE_LINE_TRACKING = 1  // Tu dong do line: chi chay khi bam phim 1
 };
-
-// ==============================================================================
-// CHE DO BAM VIEN (EDGE TRACKING: RANH GIOI GIUA DEN VA TRANG)
-// ==============================================================================
-enum EdgeMode {
-    EDGE_WHITE_LEFT_BLACK_RIGHT = 0, // Ben trai la Trang (0), ben phai la Den (1): chuyen tiep 0 -> 1
-    EDGE_BLACK_LEFT_WHITE_RIGHT = 1, // Ben trai la Den (1), ben phai la Trang (0): chuyen tiep 1 -> 0
-    EDGE_AUTO                   = 2, // Tu dong tim ranh gioi mep bien gan tam nhat
-    EDGE_CENTER_LINE            = 3  // Bam giua vach den (phu hop thanh 5 mat TCRT5000 2D4.1)
-};
-
-// Mac dinh: Bam giua vach voi TCRT5000 5 mat, bam vien trai voi thanh 8 mat
-#ifdef SENSOR_TCRT5000_5CH
-#define EDGE_FOLLOW_MODE EDGE_CENTER_LINE
-#else
-#define EDGE_FOLLOW_MODE EDGE_WHITE_LEFT_BLACK_RIGHT
-#endif
 
 // ==============================================================================
 // 1. CAU HINH CHAN DIEU KHIEN DONG CO L298N (4 DONG CO)
@@ -74,21 +57,13 @@ enum EdgeMode {
 // nen runTurnLeft LUON xoay sang trai du doi mau chan hay kiem tra chan.
 #define MOTOR_SPEED_SCALE        1000  // Gia tri toi da cua van toc do chuan hoa
 #define MOTOR_SPEED_STEP          40   // Buoc tang/giam khi lenh '+'/'-' qua BLE (~10/255)
+#define MOTOR_OUTPUT_PERCENT      88   // Chi ap dung cho do line tu dong; lenh tay mac dinh 100%
 
 // Van toc do mac dinh (don vi chuan hoa)
 #define MOTOR_BASE_SPEED         725   // ~185/255 : toc do co ban khi di thang
 #define MOTOR_MAX_SPEED          980   // ~250/255 : toc do toi da khi tang toc
 #define MOTOR_MIN_SPEED          647   // ~165/255 : nhanh nhat ma van chay duoc
 #define MOTOR_MANUAL_SPEED       863   // ~220/255 : toc do khi dieu khien bang tay qua BLE
-#define MOTOR_SEARCH_SPEED       725   // ~185/255 : toc do xoay tim lai vach khi bi vang khoi ranh gioi
-#define MOTOR_SPIN_SPEED         765   // ~195/255 : toc do xoay gat tai cho gap goc vuong 90 do / cua chu U
-
-// Thang do PWM tuong ung (0-255) - dung cho he so PID va tinh toan trong main.cpp
-#define MOTOR_BASE_SPEED_PWM     185
-#define MOTOR_MAX_SPEED_PWM      250
-#define MOTOR_MIN_SPEED_PWM      165
-#define MOTOR_SEARCH_SPEED_PWM   185
-#define MOTOR_SPIN_SPEED_PWM     195
 
 // Thong so PWM (mien driver, 0 - 255)
 // MOTOR_MIN_PWM_*   : duty nho nhat ma van chay duoc (ngoai dai co truot)
@@ -135,9 +110,29 @@ enum EdgeMode {
 #define NUM_SENSORS       8
 #define SENSOR_HEIGHT_MM  0.5f  // Khoang cach tu mat doc sensor xuong mat dat (0.5 mm)
 #define SENSOR_PITCH_MM   6.0f  // Khoang cach giua 2 mat doc lien ke (6 mm)
-#define LINE_WIDTH_MM     16.0f // Be ngang vach line den (16 mm)
+#ifdef SENSOR_PHOTORESISTOR
+#define LINE_WIDTH_MM     16.0f
+#else
+#define LINE_WIDTH_MM     20.0f // Be ngang line tren san IR hien tai (~20 mm)
+#endif
 #endif
 #define SENSOR_MASK       static_cast<uint8_t>((1U << NUM_SENSORS) - 1U)
+
+// Van doc du NUM_SENSORS; mask chi ap dung khi tinh line. Nhan cross IR dung du 8 mat.
+#ifdef SENSOR_TCRT5000_5CH
+#define LINE_LEFT_MASK           0x03 // S1, S2
+#define LINE_CENTER_MASK         0x04 // S3
+#define LINE_RIGHT_MASK          0x18 // S4, S5
+#elif defined(SENSOR_PHOTORESISTOR)
+#define LINE_LEFT_MASK           0x0F // S1..S4
+#define LINE_CENTER_MASK         0x00
+#define LINE_RIGHT_MASK          0xF0 // S5..S8
+#else
+#define LINE_LEFT_MASK           0x0A // S2, S4 (danh so 1..8)
+#define LINE_CENTER_MASK         0x00 // Tam line la S4/S5: moi mat o mot ben
+#define LINE_RIGHT_MASK          0x50 // S5, S7
+#endif
+#define LINE_TRACKING_MASK static_cast<uint8_t>(LINE_LEFT_MASK | LINE_CENTER_MASK | LINE_RIGHT_MASK)
 
 #ifdef BOARD_ESP32_38PIN
 // Day chan cam bien cho ESP32 38-pin (cum GPIO ben phai, ho tro INPUT & INPUT_PULLUP)
@@ -175,52 +170,20 @@ enum EdgeMode {
 #endif
 
 // Muc logic khi cam bien phat hien vach line den:
-// - Thanh IR 8 mat & TCRT5000 2D4.1: vach DEN -> LOW (0), nen TRANG -> HIGH (1)
-// - Thanh quang tro (LDR) 8 mat: thuong vach DEN -> HIGH (1), nen TRANG -> LOW (0)
-#ifdef SENSOR_PHOTORESISTOR
-#define LINE_ACTIVE_STATE HIGH
-#else
-#define LINE_ACTIVE_STATE LOW
-#endif
-
-// Nguong phan loai cho goc cua gat & he so PID theo so mat cam bien
+// - IR 8 mat dang dung: da do GPIO 00000000 tren nen trang -> LOW la nen, HIGH la line.
+// - Quang tro (LDR) 8 mat: mac dinh vach DEN -> HIGH (1).
+// - TCRT5000 2D4.1 giu mac dinh LOW; dung lenh I de dao neu phan cung khac.
 #ifdef SENSOR_TCRT5000_5CH
-#define SENSORS_CROSS_LINE_THRESHOLD 4    // Nguong nhan dien vach ngang / nga tu (tu 4/5 mat tro len)
-#define SHARP_TURN_THRESHOLD         1.4f // Bat dau xoay gat khi lech tu ~1.4 buoc mat (mat ngoai S1/S5)
-#define SHARP_TURN_EXIT_THRESHOLD    0.5f // Thoat xoay khi line ve gan tam S3
-#define LINE_SEARCH_TIMEOUT_MS       750  // Dung dong co neu chua tim thay line
-
-#define PID_KP                  62.0f // PWM tren moi buoc lech cam bien (5 mat thang do -2..+2)
-#define PID_KD                  24.0f // He so vi phan quy ve chu ky lay mau danh dinh
-#define LINE_ERROR_FILTER_ALPHA  0.45f
-#define LINE_CURVE_SPEED_DROP   24.0f // Giam PWM co ban khi vao cua
+#define LINE_ACTIVE_STATE LOW
 #else
-#define SENSORS_CROSS_LINE_THRESHOLD 6    // Nguong nhan dien vach ngang / nga tu (tu 6 mat tro len)
-#define SHARP_TURN_THRESHOLD         2.5f // 2.5 buoc mat doc (15 mm voi buoc 6 mm) de bat dau xoay
-#define SHARP_TURN_EXIT_THRESHOLD    1.0f // 1.0 buoc mat doc (6 mm) de thoat xoay
-#define LINE_SEARCH_TIMEOUT_MS       750  // Dung dong co neu chua tim thay vien
-
-// He so PID toi uu cho bam vien va be lai dut khoat
-#define PID_KP                  45.0f // PWM tren moi buoc lech cam bien
-#define PID_KD                  18.0f // He so vi phan quy ve chu ky lay mau danh dinh
-#define LINE_ERROR_FILTER_ALPHA  0.45f
-#define LINE_CURVE_SPEED_DROP   16.0f // Giam PWM co ban tren moi buoc lech cam bien
+#define LINE_ACTIVE_STATE HIGH
 #endif
 
 // ==============================================================================
-// 3. THONG SO HINH HOC CO KHI & DELAY CANH BAO (LOOK-AHEAD DELAY CHO CUC LY 4CM)
+// 3. DO LINE CO BAN
 // ==============================================================================
-#define SENSOR_TO_AXLE_DISTANCE_CM  4.0f // Khoang cach tu mat sensor den truc 2 banh truoc (4cm)
-
-// Do mat sensor di truoc banh xe 4cm, khi mat sensor thay goc vuong 90 do thi banh xe van con cach 4cm
-// Delay chay thang nhe 65ms de 2 banh truoc tien sat toi dinh cua roi moi xoay (chong chem cua som)
-#define SHARP_TURN_LEAD_DELAY_MS    65   // Tri hoan chay thang truoc khi xoay gat 90 do (ms)
-
-// Thoi gian chay thang duy tri qua vach ngang/nga tu (ms) de 2 banh truoc vuot qua hoan toan khoang cach 4cm
-#define CROSS_LINE_PASS_DELAY_MS    140  // Chay thang 140ms qua vach ngang
-
-// Chu ky lay mau PD toi uu (10ms = 100Hz, moi chu ky xe di chuyen ~0.4cm o toc do 185)
-#define PID_SAMPLE_INTERVAL_MS      10
+#define LINE_SAMPLE_INTERVAL_MS    10   // Doc 100 lan/giay, xac nhan hai lan cung ket luan
+#define CROSS_LINE_PASS_DELAY_MS  140   // Di thang qua nga tu toi da 140 ms
 
 // ==============================================================================
 // 4. CAU HINH CHAN TIN HIEU CHO 3 SERVO (CHAY DOC LAP)

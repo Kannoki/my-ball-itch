@@ -44,17 +44,17 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
 
     Serial.printf("[BLE] Controller Button '%c': %s\n", button, pressed ? "PRESSED" : "RELEASED");
 
-    // 1. Phim 1: KHOI DONG / TAM DUNG DO VIEN LINE
+    // 1. Phim 1: KHOI DONG / TAM DUNG DO LINE LINE
     if (button == '1' && pressed) {
         if (currentRobotMode == MODE_LINE_TRACKING) {
             currentRobotMode = MODE_STANDBY_BLE;
             stopMotion();
-            bleSendLog("Trang thai: TAM DUNG (Standby). Bam '1' de tiep tuc do vien.\n");
-            Serial.println("[Mode] TAM DUNG DO VIEN (Standby)");
+            bleSendLog("Trang thai: TAM DUNG (Standby). Bam '1' de tiep tuc do line.\n");
+            Serial.println("[Mode] TAM DUNG DO LINE (Standby)");
         } else {
             currentRobotMode = MODE_LINE_TRACKING;
-            bleSendLog("Trang thai: BAT DAU DO VIEN (Edge Tracking)!\n");
-            Serial.println("[Mode] BAT DAU DO VIEN (Edge Tracking)");
+            bleSendLog("Trang thai: BAT DAU DO LINE (Co ban)!\n");
+            Serial.println("[Mode] BAT DAU DO LINE (Co ban)");
         }
         return;
     }
@@ -242,10 +242,9 @@ static void handleUartText(const String& text) {
         return;
     }
 
-    // Chuyen doi che do bam vien: V hoac v
+    // V chi nhac lai luat; khong con nhieu che do do line de doi nham.
     if (c == 'V' || c == 'v') {
-        toggleEdgeFollowMode();
-        bleSendLog("EDGE MODE -> " + String(getEdgeFollowModeName()) + "\n");
+        bleSendLog("DO LINE CO BAN: trang=dung, trai=re trai, phai=re phai, hai ben=thang.\n");
         return;
     }
 
@@ -261,7 +260,7 @@ static void handleUartText(const String& text) {
         return;
     }
 
-    // Chuyen che do / Bat dau do vien: 1, M hoac m (khi chi co 1 ky tu hoac khong co tham so)
+    // Chuyen che do / Bat dau do line: 1, M hoac m (khi chi co 1 ky tu hoac khong co tham so)
     if ((c == '1' || c == 'M' || c == 'm') && cmd.length() == 1) {
         if (currentRobotMode == MODE_LINE_TRACKING) {
             currentRobotMode = MODE_STANDBY_BLE;
@@ -269,7 +268,7 @@ static void handleUartText(const String& text) {
             bleSendLog("Mode -> STANDBY (Tam dung)\n");
         } else {
             currentRobotMode = MODE_LINE_TRACKING;
-            bleSendLog("Mode -> BAT DAU DO VIEN (Edge Tracking)\n");
+            bleSendLog("Mode -> BAT DAU DO LINE (Co ban)\n");
         }
         return;
     }

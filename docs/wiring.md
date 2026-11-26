@@ -132,7 +132,7 @@ Thanh cảm biến xếp từ trái sang phải: `S1 -> S2 -> S3 -> S4 -> S5 -> 
 >   - Cách 2: Nối chân **IR** vào chân **GPIO 1** của ESP32-S3 (firmware đã tự động cấu hình xuất mức `HIGH` để bật đèn).
 > - **Cách kiểm tra:** Sau khi nối IR vào nguồn, bật camera điện thoại soi vào 8 mắt phát: bạn sẽ thấy 8 bóng phát ánh sáng mờ màu tím hồng!
 
-> **Cách kiểm tra mức logic:** Mặc định trong code để `LINE_ACTIVE_STATE LOW` (phổ biến nhất cho cảm biến TCRT5000: khi gặp vach đen đèn tắt/chân out mức 0). Nếu module của bạn ngược lại (khi gặp vạch đen xuất mức 1), chỉ cần sửa lại trong `include/config.h`:
+> **Cách kiểm tra mức logic:** IR 8 mắt hiện mặc định `LINE_ACTIVE_STATE HIGH`, dựa trên mẫu nền trắng đã đo là `GPIO: 00000000`. TCRT5000 2D4.1 5 mắt vẫn mặc định LOW. Kiểm tra trên cả nền trắng và vạch đen; dùng lệnh `I` để đảo nếu module khác logic, hoặc cấu hình trong `include/config.h`:
 >
 > ```cpp
 > #define LINE_ACTIVE_STATE HIGH
@@ -198,7 +198,7 @@ Dự án tích hợp giao thức Nordic UART Service (NUS) tương thích 100% v
        - Thả tay: Xe tự động dừng ngay lập tức.
    - **Mục UART Terminal (Theo dõi thời gian thực & Cân chỉnh cảm biến):**
      - Màn hình hiển thị liên tục mỗi 300ms trạng thái 8 mắt:
-       `R:11000011 [..####..] E:+0.0`
+       `R:00011000 [...##...] U:-.-##-.- FORWARD`
      - Các lệnh gửi nhanh:
        - `?` hoặc `H`: In báo cáo chẩn đoán chi tiết từng chân GPIO và trạng thái logic.
        - `I`: Đảo mức logic nhận diện vạch đen (`HIGH` <-> `LOW`).
@@ -282,7 +282,7 @@ L298N có tổn thất điện áp khoảng **1,4–2 V** trên cầu H-bridge. 
 duty dưới khoảng **165/255 (65 %)** thường **không kéo được** động cơ.
 
 Cách xử lý:
-1. Firmware đã có **nhịp đề-pa** `245/255` trong `120 ms` khi khởi hành — nếu xe vẫn không chạy, kiểm tra nguồn.
+1. Firmware có **nhịp đề-pa** cấu hình `245/255` trong `120 ms`. Dò line tự động áp dụng thêm `MOTOR_OUTPUT_PERCENT` (hiện 88%); điều khiển tay giữ 100%. Nếu xe không chạy, kiểm tra nguồn và PWM thực tế cần cho tải.
 2. Tăng duty tối thiểu qua BLE: `XM 180 180` (rồi chép giá trị này vào `config.h`).
 3. Kiểm tra 2 động cơ cùng bên **có được đấu song song đúng cực** (2 dây đỏ vào một cọc, 2 dây đen vào cọc kia).
    Nếu 1 động cơ đấu ngược cực với động cơ kia, chúng **triệt tiêu nhau** và bên đó không quay.
@@ -299,4 +299,4 @@ Cách xử lý:
 | Bên trái chạy, bên phải không | 2 động cơ phải đấu ngược cực | Kiểm tra lại dây, dùng `XR` |
 | Xe kéo yếu, rung | Duty dưới ngưỡng kéo | `XM 180 180` (mục 6.5) |
 | Bánh trong vòng cong kéo theo | Dead-band quá cao | `XD 120 120` (mục 6.1) |
-| Xe lắc, mất vạch | PID chưa tinh chỉnh | Xem [README](../README.md) → điều chỉnh `PID_KP`/`PID_KD` |
+| Xe lắc, mất vạch | Tốc độ cao hoặc cảm biến lệch ngưỡng | Giảm `MOTOR_OUTPUT_PERCENT` cho auto; kiểm tra trạng thái trái/phải trên Serial |

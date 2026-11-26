@@ -35,7 +35,7 @@ Nhìn theo hướng xe chạy tới: `S1 (D1)` ngoài cùng bên **TRÁI** → `
 
 - **An toàn chân ESP32 38-pin:** Cụm `GPIO 23, 22, 21, 19, 18, 5, 17, 16, 4` nằm gọn ở dãy phải, tránh Flash (`6–11`), tránh `UART0` (`1/3`) và hỗ trợ `INPUT_PULLUP` (`P`).
 - **Chân `IR` / `1R`:** Nếu bỏ trống, 8 LED IR tắt → báo **FULL ĐEN**. Dùng camera điện thoại soi để kiểm tra ánh sáng mờ tím hồng.
-- **Mức logic (`LINE_ACTIVE_STATE`):** Mặc định `LOW` (vạch đen = `0`, nền trắng = `1`). Gửi `I` qua BLE UART để đảo nhanh nếu ngược.
+- **Mức logic (`LINE_ACTIVE_STATE`):** Mặc định `HIGH` cho thanh IR 8 mắt hiện dùng (nền trắng đã đo là LOW). Kiểm tra trên cả nền trắng và vạch đen; gửi `I` qua BLE UART để đảo nhanh nếu module có logic ngược.
 
 ---
 

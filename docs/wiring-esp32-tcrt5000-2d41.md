@@ -36,7 +36,7 @@ Nhìn theo hướng xe chạy tới: `S1 (OUT1)` ngoài cùng bên **TRÁI** →
 ### Lưu ý riêng cho TCRT5000 2D4.1
 
 - **Kiểm tra nhãn chân dưới mặt sau PCB:** Thứ tự 7 chân hàn dưới mạch có thể ghi `VCC, GND, OUT1..OUT5` hoặc `IN1..IN5` tùy đợt mạch — đối chiếu đúng chữ in trên bo trước khi cắm dây.
-- **Chế độ bám mặc định (`EDGE_CENTER_LINE`):** Firmware tự đặt chế độ **Bám giữa vạch đen** (`S3 = 0.0`) phù hợp với 5 mắt cách nhau `~18 mm`. Nếu chạy sân ranh giới Đen–Trắng, bấm **`V`** trong BLE UART để chuyển sang chế độ bám viền.
+- **Dò line cơ bản:** S1/S2 nhận bên trái, S3 nhận giữa, S4/S5 nhận bên phải. S3 thấy line hoặc cả hai bên thấy line thì đi thẳng; chỉ một bên thấy line thì rẽ về bên đó; không thấy thì dừng. Lệnh `V` nhắc lại luật.
 - **Mức logic (`LINE_ACTIVE_STATE`):** Mặc định `LOW` (vạch đen = `0`, nền trắng = `1`). Nếu mạch xuất ngược, gửi **`I`** qua BLE UART để đảo nhanh hoặc chỉnh biến trở độ nhạy trên bo.
 
 ---
@@ -83,4 +83,4 @@ Nhìn theo hướng xe chạy tới: `S1 (OUT1)` ngoài cùng bên **TRÁI** →
   pio device monitor -b 115200
   ```
 
-- **Kiểm tra nhanh:** Mở BLE UART (`Adafruit Bluefruit LE Connect`) → gửi `?` để kiểm tra 5 mắt `S1..S5`, `I` để đảo logic nếu ngược, `V` để đổi chế độ bám giữa / bám viền, và dùng Control Pad nút `1` (chạy), `2/3/4` (test Servo 1/2/3), D-Pad (chạy thử động cơ ở Standby).
+- **Kiểm tra nhanh:** Mở BLE UART (`Adafruit Bluefruit LE Connect`) → gửi `?` để kiểm tra 5 mắt `S1..S5`, `I` để đảo logic nếu ngược, `V` để xem luật dò line, và dùng Control Pad nút `1` (chạy), `2/3/4` (test Servo 1/2/3), D-Pad (chạy thử động cơ ở Standby).
