@@ -155,6 +155,7 @@ enum EdgeMode {
 // Thoi gian la gia tri khoi dau can do tren xe; khong tuong duong khoang cach encoder.
 #define LINE_SAMPLE_INTERVAL_MS   5
 #define LINE_SLOW_PWM             165 // Toc do quan sat, cong, zigzag va xac nhan
+#define LINE_STEER_PWM            185 // Tran banh ngoai khi chinh lech; cho phep chenh PWM tren san 165
 #define LINE_TURN_PWM             165
 #define LINE_STRAIGHT_STABLE_MS   200 // Chi tang toc sau khi giu tam on dinh
 #define LINE_OBSERVE_MIN_MS       80  // Bo qua line cu truoc khi tim loi ra thang

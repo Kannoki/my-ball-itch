@@ -81,11 +81,6 @@ void turn(int direction, int speed) {
     else drive(speed, 0);
 }
 
-int curveDuty(int requested, int minimum) {
-    if (requested < minimum * 3 / 4) return 0;
-    return constrain(requested, minimum, MOTOR_MAX_SPEED_PWM);
-}
-
 void follow(const Sample& s, int speed, unsigned long elapsed) {
     const float error = hasError ? previousError + LINE_ERROR_FILTER_ALPHA * (s.position - previousError) : s.position;
     const float derivative = hasError && elapsed ? (error - previousError) * PID_SAMPLE_INTERVAL_MS / elapsed : 0.0f;
@@ -93,9 +88,12 @@ void follow(const Sample& s, int speed, unsigned long elapsed) {
     hasError = true;
     lastPosition = s.position;
     const float correction = PID_KP * error + PID_KD * derivative;
-    // Ca banh ngoai cung khong vuot toc do cua giai doan quan sat/xac nhan.
-    drive(min(speed, curveDuty(static_cast<int>(speed + correction), MOTOR_MIN_PWM_LEFT)),
-          min(speed, curveDuty(static_cast<int>(speed - correction), MOTOR_MIN_PWM_RIGHT)));
+    // O speed=165, neu vua kep san 165 vua kep tran 165 thi mat het chenh lech PD.
+    // Cho banh ngoai tang toi tran chinh huong; ca hai cap van tien khi bam line.
+    // Chi TURN/RECOVER moi ngat cap trong, khong nhay 165 -> 0 o lech nhe.
+    const int steeringLimit = min(MOTOR_MAX_SPEED_PWM, max(speed, LINE_STEER_PWM));
+    drive(constrain(static_cast<int>(speed + correction), MOTOR_MIN_PWM_LEFT, steeringLimit),
+          constrain(static_cast<int>(speed - correction), MOTOR_MIN_PWM_RIGHT, steeringLimit));
 }
 
 void beginRecovery(unsigned long now) {
