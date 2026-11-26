@@ -264,6 +264,9 @@ static void processLineTracking() {
         }
         rawPattern[8] = filteredPattern[8] = '\0';
         int outputLeft, outputRight;
+        // LEDC chi ap duty moi o chu ky PWM ke tiep (100 us o 10 kHz).
+        // Chi luc ghi log moi cho mot chu ky, tranh doc nham duty cu thanh loi driver.
+        delayMicroseconds((1000000UL + PWM_FREQ - 1) / PWM_FREQ + 1);
         getMotorOutputPwm(outputLeft, outputRight);
         Serial.printf("[AutoLine] Raw:[%s] Filter:[%s] Track:%s ReqPWM L=%d R=%d OutPWM L=%d R=%d GapMax=%lums\n",
                       rawPattern, filteredPattern, state, requestedLeft, requestedRight,

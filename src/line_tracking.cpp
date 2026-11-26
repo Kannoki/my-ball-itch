@@ -83,11 +83,20 @@ void turn(int direction, int speed) {
 }
 
 void follow(const Sample& s, int speed, unsigned long elapsed) {
+    lastPosition = s.position;
+    // Cum 3 mat o giua co tam +/-0.5 do so mat le, van la di thang.
+    // Dung cung quy tac centered voi phan nhan line, khong vua cong nhan
+    // o giua vua phat lenh hai cap khac PWM (185/165) lam xe tu lech.
+    if (s.centered) {
+        previousError = 0.0f;
+        hasError = false;
+        drive(speed, speed);
+        return;
+    }
     const float error = hasError ? previousError + LINE_ERROR_FILTER_ALPHA * (s.position - previousError) : s.position;
     const float derivative = hasError && elapsed ? (error - previousError) * PID_SAMPLE_INTERVAL_MS / elapsed : 0.0f;
     previousError = error;
     hasError = true;
-    lastPosition = s.position;
     const float correction = PID_KP * error + PID_KD * derivative;
     // O speed=165, neu vua kep san 165 vua kep tran 165 thi mat het chenh lech PD.
     // Cho banh ngoai tang toi tran chinh huong; ca hai cap van tien khi bam line.
