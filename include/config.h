@@ -74,7 +74,7 @@ enum EdgeMode {
 // nen runTurnLeft LUON xoay sang trai du doi mau chan hay kiem tra chan.
 #define MOTOR_SPEED_SCALE        1000  // Gia tri toi da cua van toc do chuan hoa
 #define MOTOR_SPEED_STEP          40   // Buoc tang/giam khi lenh '+'/'-' qua BLE (~10/255)
-#define MOTOR_OUTPUT_PERCENT      50   // Giam con 1/2 PWM thuc te, ke ca de-pa va lenh quay
+#define MOTOR_OUTPUT_PERCENT      88
 
 // Van toc do mac dinh (don vi chuan hoa)
 #define MOTOR_BASE_SPEED         725   // ~185/255 : toc do co ban khi di thang
