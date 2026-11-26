@@ -19,20 +19,22 @@ Xem hướng dẫn nguồn điện (Pin 2S 7.4V + mạch hạ áp LM2596 5.0V) v
 
 `main` giữ nguyên snapshot recovery trước simplify. Nhánh thử nghiệm dùng **toàn bộ S1–S8** cho `s3-ir` và `esp32-ir`; quang trở và TCRT5000 5 mắt giữ thuật toán recovery. Không thay GPIO, mặc định **HIGH = black** của IR 8 mắt hoặc cơ chế Standby khi khởi động.
 
-Bộ điều khiển nằm ở [src/line_tracking.cpp](src/line_tracking.cpp), được gọi mỗi **5 ms** (200 Hz danh định), lọc đa số **2/3 mẫu**:
+Bộ điều khiển nằm ở [src/line_tracking.cpp](src/line_tracking.cpp), đọc mỗi **5 ms** (200 Hz danh định), lọc đa số **2/3 mẫu**. Một cụm liên tục 1–4 mắt được xem là line đơn; đây là giả thiết cho line ~20 mm và bước mắt 6 mm, cần kiểm tra theo góc/độ cao thực tế.
 
-- **FOLLOW:** tìm từng cụm mắt active liên tục, tính tâm cụm theo vị trí S1 = −3.5 đến S8 = +3.5. Nếu có nhiều cụm, chọn cụm gần vị trí line lần trước. Làm mượt sai số với hệ số 0.45; tăng/giảm tốc độ hai bên theo sai số và độ thay đổi sai số được chuẩn hóa theo thời gian lấy mẫu. Line 20 mm đi giữa thường tạo cụm S3–S6; không ép chỉ hai mắt giữa phải active.
-- **Bắt góc sớm:** cụm chạm một trong hai mắt ngoài S1/S2 hoặc S7/S8, tâm lệch ít nhất **1 bước mắt**, không chạm mép đối diện → giữ hướng rẽ. Mẫu thô và mẫu lọc phải cùng thấy phía đó. `LINE_CORNER_LEAD_MS = 0`: quay ngay, không tiến thêm 65 ms. Có thể chỉnh lại nhịp tiến nếu hình học xe cần.
-- **TURN_LEFT / TURN_RIGHT:** giữ hướng xoay với PWM cấu hình **165** (trước power auto), kể cả khi tạm mất line. Sau ít nhất **80 ms**, phải thấy line hẹp ở giữa (sai số ≤ 0.5, không còn S1/S2/S7/S8) ổn định **30 ms** trên cả mẫu thô và mẫu lọc mới thoát rẽ. Trong lúc xác nhận tâm, ra lệnh dừng quay; khi bắt lại line thì tiến chậm trước. Auto xuất PWM ngay, không chờ ramp hoặc đề-pa. Quá **1000 ms** tính từ lúc bắt đầu quay thì dừng.
-- **SEARCH:** nếu mất line sau khi đã lệch về một bên, xoay theo hướng lệch cuối tối đa **750 ms**. Không có hướng lệch trước đó thì dừng.
-- **CROSS_PASS:** cả 8 mắt active trong hai mẫu liên tiếp → đi thẳng tối đa **140 ms**; sau đó bám lại line. Nếu vẫn toàn active thì dừng. Với nhiều nhánh, ưu tiên cụm gần đường đang bám; lúc đang đi giữa thường tiếp tục thẳng. Không nhận dạng ý nghĩa mũi tên hoặc giải mê cung.
-- **STOPPED:** sau timeout, giữ dừng cho đến khi tắt/bật auto bằng nút `1` (hoặc đảo logic `I`). Không tự chạy lại khi đặt xe xuống line.
+- **FOLLOW:** dùng tâm cụm line và PD để chỉnh hai bánh. Khi chưa chắc chắn, đi chậm (`LINE_SLOW_PWM = 165` trước power). Chỉ tăng tới tốc độ cơ bản sau **200 ms** giữ tâm ổn định; khi vào cong/zigzag thì giảm lại. Không bánh nào vượt tốc độ giới hạn của giai đoạn.
+- **OBSERVE:** mẫu rộng từ 5 mắt, nhiều cụm hoặc chạm mép với độ lệch lớn chỉ là **nghi góc/giao lộ**. Giảm tốc ngay rồi bò chậm, ghi nhớ các nhánh trái/phải đã thấy qua nhiều mẫu. Sau tối thiểu **80 ms**, chỉ chấp nhận lối thẳng khi line đơn ở giữa ổn định **20 ms**. Tối đa **240 ms** quan sát; nếu không có lối thẳng thì chọn nhánh **trái → phải** đã thấy. Tức ưu tiên tổng thể **thẳng → trái → phải**. Toàn active kéo dài chuyển phục hồi, không tự coi là cross để chạy thẳng vô hạn.
+- **TURN_LEFT / TURN_RIGHT:** ghi nhớ hướng, xoay PWM **165** trước power. Phải rời line cũ, quay tối thiểu **40 ms**, rồi bắt line đơn nằm giữa ổn định **30 ms** trên cả mẫu thô và mẫu lọc. Trong lúc xác nhận tâm thì dừng quay. Quá **1200 ms** thì vào phục hồi.
+- **VERIFY:** tiến chậm và tiếp tục PD. Phải bám giữa ổn định **100 ms** mới trở lại FOLLOW; sau đó vẫn cần ổn định trước khi tăng tốc. Mất line hoặc quá **300 ms** chưa xác nhận được thì phục hồi. Nếu gặp dấu hiệu góc mới thì quan sát lại ngay, không có cooldown dài cản zigzag.
+- **RECOVER:** dừng **40 ms**, quét về phía vừa rẽ/vừa thấy line **180 ms**, quét phía ngược **360 ms**, rồi quay lại **180 ms**. Bắt được line giữa thì qua VERIFY; nếu xác nhận lại thất bại cũng tính vào số lần phục hồi. Tối đa **2 lần**, tổng thời gian phục hồi kể cả xác nhận không quá **2500 ms**.
+- **STOPPED:** hết giới hạn thì giữ dừng, phải tắt/bật auto bằng nút `1` hoặc đảo logic `I` để reset. Nếu chưa từng thấy line hợp lệ từ lúc bật auto, mất line sẽ dừng ngay thay vì quét mù. Một chuỗi OBSERVE/TURN/VERIFY cũng có giới hạn tổng **2000 ms** để không lặp vô hạn.
 
-Các thời gian và ngưỡng trong `include/config.h` là giá trị thử nghiệm, cần hiệu chỉnh trên xe. Nhấc cảm biến khỏi sàn có thể cho tín hiệu giống nền ít phản xạ; các luật này không phải bộ phát hiện nhấc xe. Mẫu 4 mắt `-#-..-#-` trước đây không còn được dùng làm ngoại lệ: cụm line được đánh giá từ đủ 8 bit thực tế.
+Các giới hạn là giá trị **thử nghiệm**, không phải kết quả đã hiệu chỉnh trên xe. Sensor đi trước trục bánh khoảng 4 cm theo cấu hình: thời gian bò chậm phải đo để bánh tới vị trí rẽ phù hợp. Không có encoder nên thời gian không bảo đảm khoảng cách, góc quét hoặc điểm quay lại chính xác; nếu điều kiện không rõ thì dừng có giới hạn. Không đọc được ý nghĩa mũi tên, không biết một nhánh hợp lệ có phải đường đích hay không; thứ tự chọn nhánh là quy tắc hành trình mặc định.
+
+Nhấc xe, nền ít phản xạ và vùng đen có thể cho cùng tín hiệu digital. Flow này không phân biệt tuyệt đối các tình huống đó; cần kiểm tra ngưỡng và độ cao cảm biến trước khi chạy.
 
 **Power auto là 65%** (`MOTOR_OUTPUT_PERCENT`, giảm từ 88% để hạn chế vượt góc), chỉ truyền cho lệnh của bộ điều khiển IR 8 mắt. Các lệnh motor thường và điều khiển tay mặc định **100%**. Auto dùng `runLR(left, right, power, true)` để bỏ đề-pa/ramp, cả khi dừng hoặc đảo hướng. Manual vẫn giữ đề-pa/ramp. Power áp dụng sau PWM tối thiểu; nếu giảm power làm xe không đủ lực khởi hành thì cần tăng lại sau khi thử tải. Các combo dùng thuật toán recovery hiện chạy motor mặc định 100%.
 
-Telemetry vẫn hiển thị đủ 8 bit raw và thêm `Track:FOLLOW`, `TURN_LEFT`, `TURN_RIGHT`, `SEARCH`, `CROSS_PASS` hoặc `STOPPED`. Trường `E` mô tả mẫu tức thời để chẩn đoán, còn `Track` là trạng thái điều khiển thực tế sau lọc. `V` trên hai cấu hình IR chỉ báo chế độ thử nghiệm bám tâm; không chuyển sang dò mép. `I` vẫn đảo HIGH/LOW.
+Telemetry vẫn hiển thị đủ 8 bit raw và thêm `Track:FOLLOW`, `OBSERVE`, `TURN_LEFT`, `TURN_RIGHT`, `VERIFY`, `RECOVER` hoặc `STOPPED`. `FULL_ACTIVE` chỉ là tám mắt active, không xác nhận cross. Trường `E` mô tả mẫu tức thời để chẩn đoán, còn `Track` là trạng thái điều khiển thực tế sau lọc. `V` trên hai cấu hình IR chỉ báo chế độ thử nghiệm bám tâm; không chuyển sang dò mép. `I` vẫn đảo HIGH/LOW.
 
 ---
 
@@ -58,7 +60,7 @@ Telemetry vẫn hiển thị đủ 8 bit raw và thêm `Track:FOLLOW`, `TURN_LEF
   - **Servo 2 & Servo 3:** dải xung `500–2500 µs`, góc quay `0°–180°`.
 - **Dò line linh hoạt (`5` hoặc `8` mắt):**
   - Hỗ trợ **Bám viền Đen–Trắng** (`TRANG TRAI - DEN PHAI`, `DEN TRAI - TRANG PHAI`, `AUTO`) và **Bám giữa vạch** (`BAM GIUA VACH` — mặc định cho IR 8 mắt và `esp32-tcrt5000-2d41`).
-  - Bộ lọc đa số 2/3 mẫu, tự xoay tìm lại line theo hướng lệch cuối (tối đa `750 ms` rồi dừng an toàn).
+  - IR 8 mắt dùng lọc 2/3 mẫu, quan sát nhánh, xác nhận sau rẽ và phục hồi có giới hạn. Các combo khác giữ thuật toán recovery.
 - **An toàn & điều khiển qua BLE (Adafruit Bluefruit LE Connect):**
   - Khởi động luôn ở chế độ **Standby** (dừng toàn bộ động cơ), chỉ chạy tự động khi bấm **Nút `1`**.
   - Truyền trạng thái cảm biến theo thời gian thực không chặn vòng lặp PID (`non-blocking TX queue` mỗi `300 ms`).

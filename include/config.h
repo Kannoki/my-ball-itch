@@ -149,14 +149,25 @@ enum EdgeMode {
 #define LINE_TRACKING_FIRST_BIT  static_cast<uint8_t>(0x01)
 #define LINE_TRACKING_MAX_POS    ((NUM_SENSORS - 1) * 0.5f)
 
-// Thu nghiem IR 8 mat: nho huong quay cho den khi line tro lai giua.
-#define LINE_TURN_TIMEOUT_MS     1000
-#define LINE_TURN_MIN_MS         80  // Khong nham line cu thanh line moi ngay khi bat dau quay
-#define LINE_TURN_POSITION       1.0f // Nhan goc som tu hai mat ngoai, khong doi cham S1/S8
-#define LINE_SAMPLE_INTERVAL_MS  5   // Auto IR 8 mat: 200 Hz
-#define LINE_CORNER_LEAD_MS      0   // Quay ngay, khong tien them qua goc
-#define LINE_TURN_CENTER_MS      30   // Line o giua on dinh 30 ms moi ket thuc re
-#define LINE_TURN_PWM            165  // Quay cham de bat lai line, tranh vuot qua tam
+// IR 8 mat: bam -> quan sat -> re -> xac nhan -> phuc hoi.
+// Thoi gian la gia tri khoi dau can do tren xe; khong tuong duong khoang cach encoder.
+#define LINE_SAMPLE_INTERVAL_MS   5
+#define LINE_SLOW_PWM             165 // Toc do quan sat, cong, zigzag va xac nhan
+#define LINE_TURN_PWM             165
+#define LINE_STRAIGHT_STABLE_MS   200 // Chi tang toc sau khi giu tam on dinh
+#define LINE_OBSERVE_MIN_MS       80  // Bo qua line cu truoc khi tim loi ra thang
+#define LINE_OBSERVE_MAX_MS       240 // Gioi han bo cham de quan sat giao lo
+#define LINE_EXIT_CONFIRM_MS      20  // Xac nhan loi ra, khong ket luan tu mot mau
+#define LINE_TURN_MIN_MS          40
+#define LINE_TURN_TIMEOUT_MS      1200
+#define LINE_TURN_CENTER_MS       30
+#define LINE_VERIFY_MS            100 // Tien cham kiem tra sau khi bat lai line
+#define LINE_VERIFY_MAX_MS        300
+#define LINE_EVENT_TIMEOUT_MS     2000 // Chan lap OBSERVE/VERIFY khi hoa van lien tuc
+#define LINE_RECOVER_PAUSE_MS     40
+#define LINE_RECOVER_SWEEP_MS     180 // Quet 1 ben, ben kia gap doi, roi quay lai
+#define LINE_RECOVER_MAX_ATTEMPTS 2
+#define LINE_RECOVER_TOTAL_MS     2500 // Bao gom ca cac lan bat lai line that bai
 
 #ifdef BOARD_ESP32_38PIN
 // Day chan cam bien cho ESP32 38-pin (cum GPIO ben phai, ho tro INPUT & INPUT_PULLUP)

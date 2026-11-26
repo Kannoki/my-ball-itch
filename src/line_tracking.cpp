@@ -1,19 +1,32 @@
 #include "line_tracking.h"
 
 namespace {
-enum State { FOLLOW, APPROACH_LEFT, APPROACH_RIGHT, TURN_LEFT, TURN_RIGHT, SEARCH, CROSS, STOPPED };
+enum State { FOLLOW, OBSERVE, TURN_LEFT, TURN_RIGHT, VERIFY, RECOVER, STOPPED };
+
+struct Sample {
+    uint8_t raw;
+    unsigned count;
+    unsigned clusters;
+    float position;
+    bool left;
+    bool right;
+    bool centered;
+    bool line;
+};
+
 State state = FOLLOW;
-unsigned long startedAt = 0;
+unsigned long startedAt = 0, lastSampleAt = 0, recoveryStartedAt = 0;
+unsigned long eventStartedAt = 0;
 uint8_t previousRaw = 0, olderRaw = 0;
-unsigned sampleCount = 0;
-float lastPosition = 0.0f;
-float previousError = 0.0f;
+unsigned sampleCount = 0, centerMs = 0, straightMs = 0, exitMs = 0;
+unsigned recoveryAttempts = 0;
+bool recoveryActive = false;
+bool eventActive = false, hasSeenLine = false;
+bool foundLeft = false, foundRight = false, turnDeparted = false;
+float lastPosition = 0.0f, previousError = 0.0f;
 bool hasError = false;
-bool wasAllBlack = false;
+int lastTurn = 0, recoveryDirection = 1;
 int leftPwm = 0, rightPwm = 0;
-int searchDirection = 0;
-unsigned centeredMs = 0;
-unsigned long lastSampleAt = 0;
 
 void drive(int left, int right) {
     leftPwm = left;
@@ -23,175 +36,246 @@ void drive(int left, int right) {
 void enter(State next, unsigned long now) {
     state = next;
     startedAt = now;
+    centerMs = straightMs = exitMs = 0;
     hasError = false;
-    centeredMs = 0;
 }
 
-// Tim tung cum lien tuc. Neu co nhieu cum, chon cum gan vi tri line truoc do.
-// Khong lay trung binh hai nhanh thanh mot line ao nam giua khoang trang.
-bool findCluster(uint8_t raw, float& position) {
-    bool found = false;
-    float bestDistance = 0.0f;
+// Neu co nhieu cum, chi lay cum gan line truoc do. Khong lay trung binh qua khoang trang.
+Sample analyze(uint8_t raw) {
+    Sample s{};
+    s.raw = raw;
+    s.left = (raw & 0x03) != 0;
+    s.right = (raw & 0xC0) != 0;
+    float nearest = 0.0f;
     for (int i = 0; i < 8; ++i) {
         if (!(raw & (1U << i))) continue;
         const int first = i;
-        while (i + 1 < 8 && (raw & (1U << (i + 1)))) ++i;
-        const float center = (first + i) * 0.5f - 3.5f;
-        const float distance = fabsf(center - lastPosition);
-        if (!found || distance < bestDistance) {
-            found = true;
-            bestDistance = distance;
-            position = center;
+        ++s.count;
+        while (i + 1 < 8 && (raw & (1U << (i + 1)))) { ++i; ++s.count; }
+        const float position = (first + i) * 0.5f - 3.5f;
+        const float distance = fabsf(position - lastPosition);
+        if (s.clusters == 0 || distance < nearest) {
+            nearest = distance;
+            s.position = position;
         }
+        ++s.clusters;
     }
-    return found;
+    // Mot line 20 mm voi buoc mat 6 mm thuong kich hoat 3-4 mat.
+    s.line = s.count > 0 && s.count <= 4 && s.clusters == 1;
+    s.centered = s.line && (raw & 0x18) && !s.left && !s.right && fabsf(s.position) <= 0.5f;
+    return s;
+}
+
+bool suspicious(const Sample& s) {
+    return s.count >= 5 || s.clusters > 1 ||
+           (s.left && s.position <= -1.0f) || (s.right && s.position >= 1.0f);
+}
+
+void pivot(int direction, int speed) {
+    if (direction < 0) drive(-speed, speed);
+    else drive(speed, -speed);
 }
 
 int curveDuty(int requested, int minimum) {
     if (requested < minimum * 3 / 4) return 0;
     return constrain(requested, minimum, MOTOR_MAX_SPEED_PWM);
 }
+
+void follow(const Sample& s, int speed, unsigned long elapsed) {
+    const float error = hasError ? previousError + LINE_ERROR_FILTER_ALPHA * (s.position - previousError) : s.position;
+    const float derivative = hasError && elapsed ? (error - previousError) * PID_SAMPLE_INTERVAL_MS / elapsed : 0.0f;
+    previousError = error;
+    hasError = true;
+    lastPosition = s.position;
+    const float correction = PID_KP * error + PID_KD * derivative;
+    // Ca banh ngoai cung khong vuot toc do cua giai doan quan sat/xac nhan.
+    drive(min(speed, curveDuty(static_cast<int>(speed + correction), MOTOR_MIN_PWM_LEFT)),
+          min(speed, curveDuty(static_cast<int>(speed - correction), MOTOR_MIN_PWM_RIGHT)));
+}
+
+void beginRecovery(unsigned long now) {
+    eventActive = false;
+    if (!hasSeenLine) {
+        enter(STOPPED, now);
+        drive(0, 0);
+        return;
+    }
+    if (!recoveryActive) {
+        recoveryStartedAt = now;
+        recoveryActive = true;
+        recoveryAttempts = 0;
+    }
+    if (recoveryAttempts >= LINE_RECOVER_MAX_ATTEMPTS || now - recoveryStartedAt >= LINE_RECOVER_TOTAL_MS) {
+        enter(STOPPED, now);
+    } else {
+        ++recoveryAttempts;
+        recoveryDirection = lastTurn != 0 ? lastTurn : lastPosition < -0.25f ? -1 : 1;
+        enter(RECOVER, now);
+    }
+    drive(0, 0);
+}
+
+void beginObserve(const Sample& s, unsigned long now) {
+    if (!eventActive) {
+        eventActive = true;
+        eventStartedAt = now;
+    }
+    foundLeft = s.left;
+    foundRight = s.right;
+    enter(OBSERVE, now);
+    drive(0, 0); // Giam ngay truoc khi bo cham de quan sat.
+}
+
+void beginTurn(int direction, const Sample& s, unsigned long now, int speed) {
+    lastTurn = direction;
+    turnDeparted = !s.centered;
+    enter(direction < 0 ? TURN_LEFT : TURN_RIGHT, now);
+    pivot(direction, speed);
+}
 } // namespace
 
 void resetLineTracking() {
     state = FOLLOW;
-    startedAt = 0;
+    startedAt = lastSampleAt = recoveryStartedAt = 0;
+    eventStartedAt = 0;
     previousRaw = olderRaw = 0;
-    sampleCount = 0;
+    sampleCount = centerMs = straightMs = exitMs = recoveryAttempts = 0;
+    recoveryActive = foundLeft = foundRight = turnDeparted = hasError = false;
+    eventActive = hasSeenLine = false;
     lastPosition = previousError = 0.0f;
-    hasError = wasAllBlack = false;
-    searchDirection = 0;
-    centeredMs = 0;
-    lastSampleAt = 0;
+    lastTurn = 0;
+    recoveryDirection = 1;
     drive(0, 0);
 }
 
 void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
-    const unsigned long elapsed = lastSampleAt == 0 ? LINE_SAMPLE_INTERVAL_MS : now - lastSampleAt;
+    const unsigned long elapsed = sampleCount == 0 ? LINE_SAMPLE_INTERVAL_MS : now - lastSampleAt;
     lastSampleAt = now;
-    const bool allBlack = raw == 0xFF && wasAllBlack;
-    wasAllBlack = raw == 0xFF;
+    // Khong tinh mot lan loop bi tre thanh nhieu mau xac nhan lien tiep.
+    const unsigned tick = static_cast<unsigned>(min(elapsed, static_cast<unsigned long>(LINE_SAMPLE_INTERVAL_MS)));
     const uint8_t filtered = (raw & previousRaw) | (raw & olderRaw) | (previousRaw & olderRaw);
     olderRaw = previousRaw;
     previousRaw = raw;
-    if (++sampleCount < 3) { drive(0, 0); return; }
-    sampleCount = 3;
+    if (sampleCount < 3) ++sampleCount;
+    if (sampleCount < 3) { drive(0, 0); return; }
 
-    // Dung do timeout chi duoc reset khi nguoi dung tat/bat lai auto (hoac dao logic).
-    if (state == STOPPED) { drive(0, 0); return; }
-
+    const Sample s = analyze(filtered);
+    const Sample direct = analyze(raw);
     const int speed = constrain(baseSpeedPwm, MOTOR_MIN_SPEED_PWM, MOTOR_MAX_SPEED_PWM);
+    const int slowSpeed = min(speed, LINE_SLOW_PWM);
     const int turnSpeed = min(speed, LINE_TURN_PWM);
-    float centerPosition = 0.0f;
-    const bool centered = (filtered & 0x18) != 0 && (filtered & 0xC3) == 0 &&
-                          findCluster(filtered, centerPosition) && fabsf(centerPosition) <= 0.5f;
+    const bool centered = s.centered && direct.centered;
 
-    // Sensor thay goc truoc khi truc banh toi goc: tien cham mot nhip roi moi xoay.
-    if (state == APPROACH_LEFT || state == APPROACH_RIGHT) {
-        if (now - startedAt < LINE_CORNER_LEAD_MS) {
-            drive(turnSpeed, turnSpeed);
-        } else {
-            const bool left = state == APPROACH_LEFT;
-            enter(left ? TURN_LEFT : TURN_RIGHT, now);
-            if (left) drive(-turnSpeed, turnSpeed);
-            else drive(turnSpeed, -turnSpeed);
+    if (state == STOPPED) { drive(0, 0); return; }
+    // Chua tung bat duoc line thi khong bo toi de "kham pha" mot nen toan den.
+    if (!hasSeenLine && !s.line) {
+        enter(STOPPED, now);
+        drive(0, 0);
+        return;
+    }
+    if (recoveryActive && now - recoveryStartedAt >= LINE_RECOVER_TOTAL_MS) {
+        enter(STOPPED, now);
+        drive(0, 0);
+        return;
+    }
+    if (eventActive && now - eventStartedAt >= LINE_EVENT_TIMEOUT_MS) {
+        beginRecovery(now);
+        return;
+    }
+    if (s.line && direct.line) hasSeenLine = true;
+
+    if (state == RECOVER) {
+        if (centered) {
+            centerMs += tick;
+            drive(0, 0);
+            if (centerMs >= LINE_TURN_CENTER_MS) enter(VERIFY, now);
+            return;
         }
+        centerMs = 0;
+        const unsigned long age = now - startedAt;
+        if (age < LINE_RECOVER_PAUSE_MS) { drive(0, 0); return; }
+        const unsigned long sweep = age - LINE_RECOVER_PAUSE_MS;
+        if (sweep < LINE_RECOVER_SWEEP_MS) pivot(recoveryDirection, turnSpeed);
+        else if (sweep < LINE_RECOVER_SWEEP_MS * 3UL) pivot(-recoveryDirection, turnSpeed);
+        else if (sweep < LINE_RECOVER_SWEEP_MS * 4UL) pivot(recoveryDirection, turnSpeed);
+        else beginRecovery(now);
         return;
     }
 
     if (state == TURN_LEFT || state == TURN_RIGHT) {
-        if (now - startedAt >= LINE_TURN_TIMEOUT_MS) {
-            enter(STOPPED, now);
+        const int direction = state == TURN_LEFT ? -1 : 1;
+        if (now - startedAt >= LINE_TURN_TIMEOUT_MS) { beginRecovery(now); return; }
+        // Phai roi line cu truoc, tranh thay lai line cu roi ket luan da re xong.
+        if (!(s.raw & 0x18) && !(direct.raw & 0x18)) turnDeparted = true;
+        if (turnDeparted && now - startedAt >= LINE_TURN_MIN_MS && centered) {
+            centerMs += tick;
             drive(0, 0);
+            if (centerMs >= LINE_TURN_CENTER_MS) enter(VERIFY, now);
         } else {
-            // Kiem tra ca mau tho de bo loc 2/3 khong giu lai mot tam gia.
-            float rawPosition = 0.0f;
-            const bool rawCentered = (raw & 0x18) != 0 && (raw & 0xC3) == 0 &&
-                                     findCluster(raw, rawPosition) && fabsf(rawPosition) <= 0.5f;
-            if (now - startedAt >= LINE_TURN_MIN_MS && centered && rawCentered) {
-                // Khong tinh khoang tre dai cua loop thanh nhieu mau xac nhan.
-                centeredMs += min(elapsed, static_cast<unsigned long>(LINE_SAMPLE_INTERVAL_MS));
-            } else {
-                centeredMs = 0;
-            }
-            if (centeredMs >= LINE_TURN_CENTER_MS) {
-                enter(FOLLOW, now);
-                lastPosition = centerPosition;
-                drive(turnSpeed, turnSpeed); // Bat dau bam lai o toc do thap.
-            } else if (centered && rawCentered && now - startedAt >= LINE_TURN_MIN_MS) {
-                drive(0, 0); // Dung quay trong luc xac nhan tam, tranh quay vuot line.
-            } else if (state == TURN_LEFT) {
-                drive(-turnSpeed, turnSpeed);
-            } else {
-                drive(turnSpeed, -turnSpeed);
-            }
+            centerMs = 0;
+            pivot(direction, turnSpeed);
         }
         return;
     }
 
-    if (state == CROSS) {
-        if (now - startedAt < CROSS_LINE_PASS_DELAY_MS) {
-            drive(speed, speed);
+    if (state == OBSERVE) {
+        // Ghi nho nhanh xuat hien trong qua trinh, khong chi mot anh chup sensor.
+        foundLeft |= s.left && direct.left;
+        foundRight |= s.right && direct.right;
+        const unsigned long age = now - startedAt;
+        exitMs = age >= LINE_OBSERVE_MIN_MS && centered ? exitMs + tick : 0;
+
+        // Chi chap nhan loi thang khi da qua vung rong va line giua on dinh.
+        if (exitMs >= LINE_EXIT_CONFIRM_MS) {
+            enter(VERIFY, now);
+            follow(s, slowSpeed, elapsed);
             return;
         }
-        if (filtered == 0xFF) {
-            enter(STOPPED, now);
-            drive(0, 0);
+        if (age >= LINE_OBSERVE_MAX_MS || (age >= LINE_OBSERVE_MIN_MS && s.count == 0 && direct.count == 0)) {
+            if (s.count == 8) {
+                beginRecovery(now); // Nen den rong/khong co phan xa: khong chay thang vo han.
+            } else if (foundLeft) {
+                beginTurn(-1, s, now, turnSpeed);
+            } else if (foundRight) {
+                beginTurn(1, s, now, turnSpeed);
+            } else {
+                beginRecovery(now);
+            }
             return;
         }
-        enter(FOLLOW, now);
-    } else if (allBlack) {
-        enter(CROSS, now);
-        drive(speed, speed);
+        // Chi tien o toc do quan sat; khi cum don lech thi van chinh nhe ve cum do.
+        if (s.line) follow(s, slowSpeed, elapsed);
+        else drive(slowSpeed, slowSpeed);
         return;
     }
 
-    float position = 0.0f;
-    if (!findCluster(filtered, position)) {
-        if (state != SEARCH) {
-            searchDirection = lastPosition < -0.25f ? -1 : lastPosition > 0.25f ? 1 : 0;
-            enter(SEARCH, now);
+    if (state == VERIFY) {
+        // Sau re phai tien cham va bam duoc line, khong dung yen roi coi la thanh cong.
+        if (s.count == 0) { beginRecovery(now); return; }
+        if (suspicious(s)) { beginObserve(s, now); return; } // Cho phep zigzag khong co cooldown dai.
+        centerMs = centered ? centerMs + tick : 0;
+        if (centerMs >= LINE_VERIFY_MS) {
+            recoveryActive = false;
+            eventActive = false;
+            recoveryAttempts = 0;
+            lastTurn = 0;
+            enter(FOLLOW, now);
+        } else if (now - startedAt >= LINE_VERIFY_MAX_MS) {
+            beginRecovery(now);
+            return;
         }
-        if (searchDirection == 0 || now - startedAt >= LINE_SEARCH_TIMEOUT_MS) {
-            enter(STOPPED, now);
-            drive(0, 0);
-        } else {
-            const int searchSpeed = min(speed, MOTOR_SEARCH_SPEED_PWM);
-            // Vi tri am = line ben trai: banh trai lui, banh phai tien.
-            if (searchDirection < 0) drive(-searchSpeed, searchSpeed);
-            else drive(searchSpeed, -searchSpeed);
-        }
+        follow(s, slowSpeed, elapsed);
         return;
     }
 
-    if (state == SEARCH) enter(FOLLOW, now);
-    lastPosition = position;
-    // Lay ca hai mat ngoai moi ben de khong bo lo goc rong/90 do khi chua cham S1/S8.
-    const bool leftCorner = (filtered & 0x03) && !(filtered & 0xC0) &&
-                            (raw & 0x03) && !(raw & 0xC0) && position <= -LINE_TURN_POSITION;
-    const bool rightCorner = (filtered & 0xC0) && !(filtered & 0x03) &&
-                             (raw & 0xC0) && !(raw & 0x03) && position >= LINE_TURN_POSITION;
-    if (leftCorner || rightCorner) {
-        if (LINE_CORNER_LEAD_MS > 0) {
-            enter(leftCorner ? APPROACH_LEFT : APPROACH_RIGHT, now);
-            drive(turnSpeed, turnSpeed);
-        } else {
-            enter(leftCorner ? TURN_LEFT : TURN_RIGHT, now);
-            if (leftCorner) drive(-turnSpeed, turnSpeed);
-            else drive(turnSpeed, -turnSpeed);
-        }
-        return;
-    }
-
-    // Dieu chinh theo trong tam cum: line sang phai -> banh trai nhanh hon.
-    const float smoothed = hasError ? previousError + LINE_ERROR_FILTER_ALPHA * (position - previousError) : position;
-    const float derivative = hasError && elapsed > 0 ? (smoothed - previousError) * PID_SAMPLE_INTERVAL_MS / elapsed : 0.0f;
-    previousError = smoothed;
-    hasError = true;
-    const float correction = PID_KP * smoothed + PID_KD * derivative;
-    const int cruise = max(MOTOR_MIN_SPEED_PWM, speed - static_cast<int>(LINE_CURVE_SPEED_DROP * fabsf(position)));
-    drive(curveDuty(static_cast<int>(cruise + correction), MOTOR_MIN_PWM_LEFT),
-          curveDuty(static_cast<int>(cruise - correction), MOTOR_MIN_PWM_RIGHT));
+    // FOLLOW: toc do theo do tin cay. Khong doi den khi mat line moi giam toc.
+    if (s.count == 0) { beginRecovery(now); return; }
+    if (suspicious(s)) { beginObserve(s, now); return; }
+    const bool stable = centered && (!hasError || fabsf(s.position - previousError) <= 0.5f);
+    straightMs = stable ? min(straightMs + tick, static_cast<unsigned>(LINE_STRAIGHT_STABLE_MS)) : 0;
+    const bool accelerating = straightMs >= LINE_STRAIGHT_STABLE_MS;
+    const int cruise = accelerating ? speed : slowSpeed;
+    follow(s, cruise, elapsed);
 }
 
 int getLineLeftPwm() { return leftPwm; }
@@ -199,12 +283,11 @@ int getLineRightPwm() { return rightPwm; }
 
 const char* getLineTrackingStatus() {
     switch (state) {
-        case APPROACH_LEFT: return "APPROACH_LEFT";
-        case APPROACH_RIGHT: return "APPROACH_RIGHT";
+        case OBSERVE: return "OBSERVE";
         case TURN_LEFT: return "TURN_LEFT";
         case TURN_RIGHT: return "TURN_RIGHT";
-        case SEARCH: return "SEARCH";
-        case CROSS: return "CROSS_PASS";
+        case VERIFY: return "VERIFY";
+        case RECOVER: return "RECOVER";
         case STOPPED: return "STOPPED";
         default: return "FOLLOW";
     }

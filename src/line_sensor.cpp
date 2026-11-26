@@ -249,7 +249,7 @@ float getLastKnownPosition() {
 
 static String getSensorStatus(uint8_t raw) {
 #if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
-    if (isCrossLinePattern(raw)) return "CROSS";
+    if (isCrossLinePattern(raw)) return "FULL_ACTIVE"; // Controller se quan sat, chua xac nhan giao lo.
     raw &= LINE_TRACKING_MASK;
     if (raw == 0x00) return "NO_LINE";
     if (isLineSampleAmbiguous(raw)) return "NO_CONTRAST";
