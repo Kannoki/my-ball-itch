@@ -74,9 +74,11 @@ bool suspicious(const Sample& s) {
            (s.left && s.position <= -1.0f) || (s.right && s.position >= 1.0f);
 }
 
-void pivot(int direction, int speed) {
-    if (direction < 0) drive(-speed, speed);
-    else drive(speed, -speed);
+void turn(int direction, int speed) {
+    // Hai motor moi ben dung chung mot kenh. Tha cap trong, cap ngoai tien;
+    // khong dao chieu ca cap trong khi bam line hay quet tim line.
+    if (direction < 0) drive(0, speed);
+    else drive(speed, 0);
 }
 
 int curveDuty(int requested, int minimum) {
@@ -133,7 +135,7 @@ void beginTurn(int direction, const Sample& s, unsigned long now, int speed) {
     lastTurn = direction;
     turnDeparted = !s.centered;
     enter(direction < 0 ? TURN_LEFT : TURN_RIGHT, now);
-    pivot(direction, speed);
+    turn(direction, speed);
 }
 } // namespace
 
@@ -199,9 +201,9 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
         const unsigned long age = now - startedAt;
         if (age < LINE_RECOVER_PAUSE_MS) { drive(0, 0); return; }
         const unsigned long sweep = age - LINE_RECOVER_PAUSE_MS;
-        if (sweep < LINE_RECOVER_SWEEP_MS) pivot(recoveryDirection, turnSpeed);
-        else if (sweep < LINE_RECOVER_SWEEP_MS * 3UL) pivot(-recoveryDirection, turnSpeed);
-        else if (sweep < LINE_RECOVER_SWEEP_MS * 4UL) pivot(recoveryDirection, turnSpeed);
+        if (sweep < LINE_RECOVER_SWEEP_MS) turn(recoveryDirection, turnSpeed);
+        else if (sweep < LINE_RECOVER_SWEEP_MS * 3UL) turn(-recoveryDirection, turnSpeed);
+        else if (sweep < LINE_RECOVER_SWEEP_MS * 4UL) turn(recoveryDirection, turnSpeed);
         else beginRecovery(now);
         return;
     }
@@ -217,7 +219,7 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
             if (centerMs >= LINE_TURN_CENTER_MS) enter(VERIFY, now);
         } else {
             centerMs = 0;
-            pivot(direction, turnSpeed);
+            turn(direction, turnSpeed);
         }
         return;
     }

@@ -103,6 +103,7 @@ enum EdgeMode {
 #define MOTOR_START_PWM          245   // Duty toi thieu trong nhip de-pa khi bat dau quay
 #define MOTOR_START_MS           120   // Thoi gian de-pa truoc khi ve duty yeu cau
 #define MOTOR_AUTO_START_MS      40    // Auto van can de-pa ngan de pha ma sat tinh
+#define MOTOR_AUTO_RESTART_MS    500   // Chi de-pa lai neu kenh da ngat PWM it nhat 500 ms
 #define MOTOR_RAMP_MS            150   // Thoi gian de chuyen duty giua 2 muc (lam mat chay)
 
 // Ty le van toc do ben trong khi re cong (%). 60 => ben trong chay 60% ben ngoai.

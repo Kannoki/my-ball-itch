@@ -8,6 +8,8 @@ static_assert(MOTOR_MIN_PWM_LEFT > 0 && MOTOR_MIN_PWM_RIGHT > 0 &&
               "Invalid motor speed limits");
 static_assert(MOTOR_START_PWM > 0 && MOTOR_START_PWM <= 255, "Invalid motor startup boost");
 static_assert(MOTOR_START_MS > 0 && MOTOR_RAMP_MS > 0, "Invalid motor timing");
+static_assert(MOTOR_AUTO_START_MS > 0 && MOTOR_AUTO_RESTART_MS >= MOTOR_AUTO_START_MS,
+              "Invalid automatic startup timing");
 static_assert(MOTOR_ARC_INNER_RATIO > 0 && MOTOR_ARC_INNER_RATIO < 100, "Invalid arc ratio");
 static_assert(MOTOR_OUTPUT_PERCENT > 0 && MOTOR_OUTPUT_PERCENT <= 100, "Invalid motor output scale");
 
@@ -95,16 +97,19 @@ struct MotorChannel {
 
     // Thoi gian chan ENA/ENB o muc HIGH trong khi ta phai giu LOW (phat hien jumper)
     unsigned long enableHighSince;
+
+    bool hasBeenPowered;
+    unsigned long lastPoweredAt;
 };
 
 // Kenh vat ly: B = OUT3/OUT4 (trai mac dinh), A = OUT1/OUT2 (phai mac dinh)
 static MotorChannel channelB{
     PIN_MOTOR_LEFT_IN3, PIN_MOTOR_LEFT_IN4, PIN_MOTOR_LEFT_ENB, PWM_CH_LEFT,
-    100, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
+    100, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, false, 0
 };
 static MotorChannel channelA{
     PIN_MOTOR_RIGHT_IN1, PIN_MOTOR_RIGHT_IN2, PIN_MOTOR_RIGHT_ENA, PWM_CH_RIGHT,
-    100, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
+    100, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, false, 0
 };
 
 // Lenh BLE chay tren task khac voi vong lap cap nhat PWM.
@@ -122,6 +127,13 @@ static int motorOutputDuty(const MotorChannel& motor, int duty) {
     // Power chi giam phan tren san, khong nhan ca san: 165 + (185-165)*65% = 178.
     const int aboveMinimum = max(0, constrain(duty, 0, 255) - motor.minimumOutputDuty);
     return motor.minimumOutputDuty + aboveMinimum * motor.outputPercent / 100;
+}
+
+static void rememberPowered(MotorChannel& motor, unsigned long now) {
+    if (motorOutputDuty(motor, motor.appliedDuty) > 0) {
+        motor.hasBeenPowered = true;
+        motor.lastPoweredAt = now;
+    }
 }
 
 static void writeMotorPwm(const MotorChannel& motor, int duty) {
@@ -186,6 +198,8 @@ void motorDriverInit() {
         motor.boostStartedAt = 0;
         motor.lastRampAt = millis();
         motor.enableHighSince = 0;
+        motor.hasBeenPowered = false;
+        motor.lastPoweredAt = 0;
     };
     resetChannel(channelA);
     resetChannel(channelB);
@@ -310,6 +324,10 @@ bool motorDriverUpdate() {
     rampMotorChannel(channelA, now);
     rampMotorChannel(channelB, now);
 
+    // Khi duty khong doi, ramp khong ghi PWM lai, nhung kenh van dang duoc cap dien.
+    rememberPowered(channelA, now);
+    rememberPowered(channelB, now);
+
     checkEnableJumper(channelA, PIN_MOTOR_RIGHT_ENA, jumperWarned);
     checkEnableJumper(channelB, PIN_MOTOR_LEFT_ENB, jumperWarned);
 
@@ -352,12 +370,13 @@ static void updateMotorChannel(MotorChannel& motor, int speed, bool invert,
     // Ngoai dai co truot: luon chay o duty nho nhat da biet la chay duoc
     if (duty < minPwm) duty = minPwm;
 
-    // Bat dau nhip de-pa khi chuyen tu DUNG sang CHAY.
-    // Viec ket thuc nhip de-pa do rampMotorChannel lo (de dam bao rampAccum
-    // duoc dong bo voi duty thuc te).
+    // Auto chi de-pa lan dau hoac sau khi ngat PWM du lau. Khong de-pa lai
+    // moi lan banh trong tam ngung vai ms de chinh huong/xac nhan line.
+    // Manual giu nhip de-pa cu moi lan tu dung sang chay.
     if (motor.targetDuty == 0) {
-        motor.boosting = true;
-        motor.boostStartedAt = now;
+        motor.boosting = motor.minimumOutputDuty == 0 || !motor.hasBeenPowered ||
+                         now - motor.lastPoweredAt >= MOTOR_AUTO_RESTART_MS;
+        if (motor.boosting) motor.boostStartedAt = now;
     }
 
     motor.targetDuty = duty;
@@ -380,6 +399,8 @@ void runLR(int vL, int vR, int powerPercent, bool immediate) {
     MotorChannel* leftChannel = runtimeConfig.swapLeftRight ? &channelA : &channelB;
     MotorChannel* rightChannel = runtimeConfig.swapLeftRight ? &channelB : &channelA;
 
+    rememberPowered(*leftChannel, now);
+    rememberPowered(*rightChannel, now);
     leftChannel->minimumOutputDuty = immediate ? runtimeConfig.minPwmLeft : 0;
     rightChannel->minimumOutputDuty = immediate ? runtimeConfig.minPwmRight : 0;
 
