@@ -151,6 +151,19 @@ static void writeDirectionPins(MotorChannel& motor, int direction) {
     digitalWrite(motor.in2, direction < 0 ? HIGH : LOW);
 }
 
+void getMotorOutputPwm(int& left, int& right) {
+    const std::lock_guard<std::mutex> lock(motorMutex);
+    const MotorChannel& leftChannel = runtimeConfig.swapLeftRight ? channelA : channelB;
+    const MotorChannel& rightChannel = runtimeConfig.swapLeftRight ? channelB : channelA;
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    left = ledcRead(leftChannel.pwmPin);
+    right = ledcRead(rightChannel.pwmPin);
+#else
+    left = ledcRead(leftChannel.pwmChannel);
+    right = ledcRead(rightChannel.pwmChannel);
+#endif
+}
+
 // ------------------------------------------------------------------------------
 // Khoi tao
 // ------------------------------------------------------------------------------
@@ -451,14 +464,6 @@ void runLR(int vL, int vR, int powerPercent, bool immediate) {
         };
         applyNow(*leftChannel);
         applyNow(*rightChannel);
-        static unsigned long lastAutoLogAt = 0;
-        if (now - lastAutoLogAt >= 500) {
-            lastAutoLogAt = now;
-            Serial.printf("[AutoMotor] Cmd L=%d R=%d | PWM L=%d R=%d | Min L=%d R=%d\n",
-                          vL, vR, motorOutputDuty(*leftChannel, leftChannel->appliedDuty),
-                          motorOutputDuty(*rightChannel, rightChannel->appliedDuty),
-                          runtimeConfig.minPwmLeft, runtimeConfig.minPwmRight);
-        }
         return;
     }
 

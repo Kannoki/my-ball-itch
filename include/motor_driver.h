@@ -50,6 +50,10 @@ void motorDriverInit();
  */
 bool motorDriverUpdate();
 
+// Doc duty LEDC dang dat theo ben TRAI/PHAI vat ly cua xe (0-255).
+// Day la PWM dang xuat, khong phai toc do banh hay dong dien do duoc.
+void getMotorOutputPwm(int& left, int& right);
+
 /**
  * @brief API chinh: dat van toc do cho 2 ben dong co.
  * @param vL Van toc do ben trai (-1000 den +1000, so am la chay lui)

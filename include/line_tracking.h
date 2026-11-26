@@ -8,6 +8,7 @@ void resetLineTracking();
 void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm);
 int getLineLeftPwm();
 int getLineRightPwm();
+uint8_t getLineFilteredRaw();
 const char* getLineTrackingStatus();
 
 #endif

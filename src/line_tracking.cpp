@@ -18,6 +18,7 @@ State state = FOLLOW;
 unsigned long startedAt = 0, lastSampleAt = 0, recoveryStartedAt = 0;
 unsigned long eventStartedAt = 0;
 uint8_t previousRaw = 0, olderRaw = 0;
+uint8_t filteredRaw = 0;
 unsigned sampleCount = 0, centerMs = 0, straightMs = 0, exitMs = 0, cornerMs = 0;
 unsigned recoveryAttempts = 0;
 bool recoveryActive = false;
@@ -142,6 +143,7 @@ void resetLineTracking() {
     startedAt = lastSampleAt = recoveryStartedAt = 0;
     eventStartedAt = 0;
     previousRaw = olderRaw = 0;
+    filteredRaw = 0;
     sampleCount = centerMs = straightMs = exitMs = cornerMs = recoveryAttempts = 0;
     recoveryActive = foundLeft = foundRight = turnDeparted = hasError = false;
     eventActive = hasSeenLine = false;
@@ -158,6 +160,7 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
     // Khong tinh mot lan loop bi tre thanh nhieu mau xac nhan lien tiep.
     const unsigned tick = static_cast<unsigned>(min(elapsed, static_cast<unsigned long>(LINE_SAMPLE_INTERVAL_MS)));
     const uint8_t filtered = (raw & previousRaw) | (raw & olderRaw) | (previousRaw & olderRaw);
+    filteredRaw = filtered;
     olderRaw = previousRaw;
     previousRaw = raw;
     if (sampleCount < 3) ++sampleCount;
@@ -169,8 +172,23 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
     const int slowSpeed = min(speed, LINE_SLOW_PWM);
     const int turnSpeed = min(speed, LINE_TURN_PWM);
     const bool centered = s.centered && direct.centered;
+    const bool trackable = s.line && direct.line && !suspicious(s) && !suspicious(direct);
 
-    if (state == STOPPED) { drive(0, 0); return; }
+    if (state == STOPPED) {
+        // Dung van doc lai sensor. Chi khoi dong lai khi line GIUA on dinh;
+        // khong tu quet lai neu van mat line, nhieu cum hoac toan active.
+        drive(0, 0);
+        centerMs = centered ? centerMs + tick : 0;
+        if (centerMs >= LINE_VERIFY_MS) {
+            recoveryActive = eventActive = false;
+            recoveryAttempts = 0;
+            lastTurn = 0;
+            hasSeenLine = true;
+            enter(VERIFY, now);
+            follow(s, slowSpeed, elapsed);
+        }
+        return;
+    }
     // Chua tung bat duoc line thi khong bo toi de "kham pha" mot nen toan den.
     if (!hasSeenLine && !s.line) {
         enter(STOPPED, now);
@@ -211,10 +229,13 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
         if (now - startedAt >= LINE_TURN_TIMEOUT_MS) { beginRecovery(now); return; }
         // Phai roi line cu truoc, tranh thay lai line cu roi ket luan da re xong.
         if (!(s.raw & 0x18) && !(direct.raw & 0x18)) turnDeparted = true;
-        if (turnDeparted && now - startedAt >= LINE_TURN_MIN_MS && centered) {
+        if (turnDeparted && centered) {
             centerMs += tick;
             drive(0, 0);
-            if (centerMs >= LINE_TURN_CENTER_MS) enter(VERIFY, now);
+            if (now - startedAt >= LINE_TURN_MIN_MS && centerMs >= LINE_TURN_CENTER_MS) {
+                enter(VERIFY, now);
+                follow(s, slowSpeed, elapsed);
+            }
         } else {
             centerMs = 0;
             turn(direction, turnSpeed);
@@ -227,7 +248,7 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
         foundLeft |= s.left && direct.left;
         foundRight |= s.right && direct.right;
         const unsigned long age = now - startedAt;
-        exitMs = age >= LINE_OBSERVE_MIN_MS && centered ? exitMs + tick : 0;
+        exitMs = trackable ? exitMs + tick : 0;
 
         // Line da ra khoi hai mat giua va chi con o mot ben: dung tien ngay.
         // Xac nhan tren ca mau tho va mau loc roi re, khong cho het 240 ms.
@@ -243,13 +264,14 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
             return;
         }
 
-        // Chi chap nhan loi thang khi da qua vung rong va line giua on dinh.
+        // Line don da ro lai thi bam theo, khong de nhanh cu giu lenh re/dung.
         if (exitMs >= LINE_EXIT_CONFIRM_MS) {
             enter(VERIFY, now);
             follow(s, slowSpeed, elapsed);
             return;
         }
-        if (age >= LINE_OBSERVE_MAX_MS || (age >= LINE_OBSERVE_MIN_MS && s.count == 0 && direct.count == 0)) {
+        if ((!trackable && age >= LINE_OBSERVE_MAX_MS) ||
+            (age >= LINE_OBSERVE_MIN_MS && s.count == 0 && direct.count == 0)) {
             if (s.count == 8) {
                 beginRecovery(now); // Nen den rong/khong co phan xa: khong chay thang vo han.
             } else if (foundLeft) {
@@ -272,7 +294,9 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
         // Sau re phai tien cham va bam duoc line, khong dung yen roi coi la thanh cong.
         if (s.count == 0) { beginRecovery(now); return; }
         if (suspicious(s)) { beginObserve(s, now); return; } // Cho phep zigzag khong co cooldown dai.
-        centerMs = centered ? centerMs + tick : 0;
+        // Cho phep line don hoi lech de PD tiep tuc chinh, khong bat buoc
+        // dung tam tuyet doi roi moi cong nhan da bat lai line.
+        centerMs = trackable ? centerMs + tick : 0;
         if (centerMs >= LINE_VERIFY_MS) {
             recoveryActive = false;
             eventActive = false;
@@ -299,6 +323,7 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
 
 int getLineLeftPwm() { return leftPwm; }
 int getLineRightPwm() { return rightPwm; }
+uint8_t getLineFilteredRaw() { return filteredRaw; }
 
 const char* getLineTrackingStatus() {
     switch (state) {

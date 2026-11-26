@@ -242,9 +242,36 @@ static void processLineTracking() {
         return;
     }
     if (now - tracking.sampledAt < LINE_SAMPLE_INTERVAL_MS) return;
+    const unsigned long sampleGap = tracking.sampledAt == 0 ? LINE_SAMPLE_INTERVAL_MS : now - tracking.sampledAt;
     tracking.sampledAt = now;
-    updateLineTracking(readRawSensors(), now, speedToPwm(motorBaseSpeed));
-    runLR(pwmToSpeed(getLineLeftPwm()), pwmToSpeed(getLineRightPwm()), MOTOR_OUTPUT_PERCENT, true);
+    const uint8_t raw = readRawSensors();
+    updateLineTracking(raw, now, speedToPwm(motorBaseSpeed));
+    const int requestedLeft = getLineLeftPwm(), requestedRight = getLineRightPwm();
+    runLR(pwmToSpeed(requestedLeft), pwmToSpeed(requestedRight), MOTOR_OUTPUT_PERCENT, true);
+
+    // Cung mot mau: input -> quyet dinh -> duty LEDC, khong ghep cac ban tin
+    // sensor/motor doc o nhung thoi diem khac nhau de suy luan.
+    static unsigned long loggedAt = 0, maxGap = 0;
+    static const char* loggedState = nullptr;
+    maxGap = max(maxGap, sampleGap);
+    const char* state = getLineTrackingStatus();
+    if (state != loggedState || now - loggedAt >= 250) {
+        char rawPattern[9], filteredPattern[9];
+        const uint8_t filtered = getLineFilteredRaw();
+        for (int i = 0; i < 8; ++i) {
+            rawPattern[i] = (raw & (1U << i)) ? '#' : '.';
+            filteredPattern[i] = (filtered & (1U << i)) ? '#' : '.';
+        }
+        rawPattern[8] = filteredPattern[8] = '\0';
+        int outputLeft, outputRight;
+        getMotorOutputPwm(outputLeft, outputRight);
+        Serial.printf("[AutoLine] Raw:[%s] Filter:[%s] Track:%s ReqPWM L=%d R=%d OutPWM L=%d R=%d GapMax=%lums\n",
+                      rawPattern, filteredPattern, state, requestedLeft, requestedRight,
+                      outputLeft, outputRight, maxGap);
+        loggedAt = now;
+        loggedState = state;
+        maxGap = 0;
+    }
 #else
     // Cac combo khac giu thuat toan cua recovery trong thu nghiem nay.
     processLegacyLineTracking();

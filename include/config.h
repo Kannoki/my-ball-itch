@@ -158,7 +158,7 @@ enum EdgeMode {
 #define LINE_STEER_PWM            185 // Tran banh ngoai khi chinh lech; cho phep chenh PWM tren san 165
 #define LINE_TURN_PWM             165
 #define LINE_STRAIGHT_STABLE_MS   200 // Chi tang toc sau khi giu tam on dinh
-#define LINE_OBSERVE_MIN_MS       80  // Bo qua line cu truoc khi tim loi ra thang
+#define LINE_OBSERVE_MIN_MS       80  // Khi mat het line, cho ngan truoc khi chon nhanh da ghi nho
 #define LINE_OBSERVE_MAX_MS       240 // Gioi han bo cham de quan sat giao lo
 #define LINE_EXIT_CONFIRM_MS      20  // Xac nhan loi ra, khong ket luan tu mot mau
 #define LINE_TURN_MIN_MS          40
