@@ -1,7 +1,7 @@
 #include "line_tracking.h"
 
 namespace {
-enum State { FOLLOW, TURN_LEFT, TURN_RIGHT, SEARCH, CROSS, STOPPED };
+enum State { FOLLOW, APPROACH_LEFT, APPROACH_RIGHT, TURN_LEFT, TURN_RIGHT, SEARCH, CROSS, STOPPED };
 State state = FOLLOW;
 unsigned long startedAt = 0;
 uint8_t previousRaw = 0, olderRaw = 0;
@@ -12,6 +12,8 @@ bool hasError = false;
 bool wasAllBlack = false;
 int leftPwm = 0, rightPwm = 0;
 int searchDirection = 0;
+unsigned centeredMs = 0;
+unsigned long lastSampleAt = 0;
 
 void drive(int left, int right) {
     leftPwm = left;
@@ -22,6 +24,7 @@ void enter(State next, unsigned long now) {
     state = next;
     startedAt = now;
     hasError = false;
+    centeredMs = 0;
 }
 
 // Tim tung cum lien tuc. Neu co nhieu cum, chon cum gan vi tri line truoc do.
@@ -58,10 +61,14 @@ void resetLineTracking() {
     lastPosition = previousError = 0.0f;
     hasError = wasAllBlack = false;
     searchDirection = 0;
+    centeredMs = 0;
+    lastSampleAt = 0;
     drive(0, 0);
 }
 
 void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
+    const unsigned long elapsed = lastSampleAt == 0 ? PID_SAMPLE_INTERVAL_MS : now - lastSampleAt;
+    lastSampleAt = now;
     const bool allBlack = raw == 0xFF && wasAllBlack;
     wasAllBlack = raw == 0xFF;
     const uint8_t filtered = (raw & previousRaw) | (raw & olderRaw) | (previousRaw & olderRaw);
@@ -74,21 +81,50 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
     if (state == STOPPED) { drive(0, 0); return; }
 
     const int speed = constrain(baseSpeedPwm, MOTOR_MIN_SPEED_PWM, MOTOR_MAX_SPEED_PWM);
-    const int turnSpeed = min(speed, MOTOR_SPIN_SPEED_PWM);
-    const bool centered = (filtered & 0x18) != 0 && (filtered & 0xC3) == 0;
+    const int turnSpeed = min(speed, LINE_TURN_PWM);
+    float centerPosition = 0.0f;
+    const bool centered = (filtered & 0x18) != 0 && (filtered & 0xC3) == 0 &&
+                          findCluster(filtered, centerPosition) && fabsf(centerPosition) <= 0.5f;
+
+    // Sensor thay goc truoc khi truc banh toi goc: tien cham mot nhip roi moi xoay.
+    if (state == APPROACH_LEFT || state == APPROACH_RIGHT) {
+        if (now - startedAt < SHARP_TURN_LEAD_DELAY_MS) {
+            drive(turnSpeed, turnSpeed);
+        } else {
+            const bool left = state == APPROACH_LEFT;
+            enter(left ? TURN_LEFT : TURN_RIGHT, now);
+            if (left) drive(-turnSpeed, turnSpeed);
+            else drive(turnSpeed, -turnSpeed);
+        }
+        return;
+    }
 
     if (state == TURN_LEFT || state == TURN_RIGHT) {
         if (now - startedAt >= LINE_TURN_TIMEOUT_MS) {
             enter(STOPPED, now);
             drive(0, 0);
-        } else if (now - startedAt >= LINE_TURN_MIN_MS && centered) {
-            enter(FOLLOW, now);
-            lastPosition = 0;
-            drive(speed, speed);
-        } else if (state == TURN_LEFT) {
-            drive(-turnSpeed, turnSpeed);
         } else {
-            drive(turnSpeed, -turnSpeed);
+            // Kiem tra ca mau tho de bo loc 2/3 khong giu lai mot tam gia.
+            float rawPosition = 0.0f;
+            const bool rawCentered = (raw & 0x18) != 0 && (raw & 0xC3) == 0 &&
+                                     findCluster(raw, rawPosition) && fabsf(rawPosition) <= 0.5f;
+            if (now - startedAt >= LINE_TURN_MIN_MS && centered && rawCentered) {
+                // Khong tinh khoang tre dai cua loop thanh nhieu mau xac nhan.
+                centeredMs += min(elapsed, static_cast<unsigned long>(PID_SAMPLE_INTERVAL_MS));
+            } else {
+                centeredMs = 0;
+            }
+            if (centeredMs >= LINE_TURN_CENTER_MS) {
+                enter(FOLLOW, now);
+                lastPosition = centerPosition;
+                drive(turnSpeed, turnSpeed); // Bat dau bam lai o toc do thap.
+            } else if (centered && rawCentered && now - startedAt >= LINE_TURN_MIN_MS) {
+                drive(0, 0); // Dung quay trong luc xac nhan tam, tranh quay vuot line.
+            } else if (state == TURN_LEFT) {
+                drive(-turnSpeed, turnSpeed);
+            } else {
+                drive(turnSpeed, -turnSpeed);
+            }
         }
         return;
     }
@@ -133,17 +169,17 @@ void updateLineTracking(uint8_t raw, unsigned long now, int baseSpeedPwm) {
     const bool leftCorner = (filtered & 0x01) && !(filtered & 0x80) && position <= -LINE_TURN_POSITION;
     const bool rightCorner = (filtered & 0x80) && !(filtered & 0x01) && position >= LINE_TURN_POSITION;
     if (leftCorner || rightCorner) {
-        enter(leftCorner ? TURN_LEFT : TURN_RIGHT, now);
-        if (leftCorner) drive(-turnSpeed, turnSpeed);
-        else drive(turnSpeed, -turnSpeed);
+        enter(leftCorner ? APPROACH_LEFT : APPROACH_RIGHT, now);
+        drive(turnSpeed, turnSpeed);
         return;
     }
 
     // Dieu chinh theo trong tam cum: line sang phai -> banh trai nhanh hon.
-    const float derivative = hasError ? position - previousError : 0.0f;
-    previousError = position;
+    const float smoothed = hasError ? previousError + LINE_ERROR_FILTER_ALPHA * (position - previousError) : position;
+    const float derivative = hasError && elapsed > 0 ? (smoothed - previousError) * PID_SAMPLE_INTERVAL_MS / elapsed : 0.0f;
+    previousError = smoothed;
     hasError = true;
-    const float correction = PID_KP * position + PID_KD * derivative;
+    const float correction = PID_KP * smoothed + PID_KD * derivative;
     const int cruise = max(MOTOR_MIN_SPEED_PWM, speed - static_cast<int>(LINE_CURVE_SPEED_DROP * fabsf(position)));
     drive(curveDuty(static_cast<int>(cruise + correction), MOTOR_MIN_PWM_LEFT),
           curveDuty(static_cast<int>(cruise - correction), MOTOR_MIN_PWM_RIGHT));
@@ -154,6 +190,8 @@ int getLineRightPwm() { return rightPwm; }
 
 const char* getLineTrackingStatus() {
     switch (state) {
+        case APPROACH_LEFT: return "APPROACH_LEFT";
+        case APPROACH_RIGHT: return "APPROACH_RIGHT";
         case TURN_LEFT: return "TURN_LEFT";
         case TURN_RIGHT: return "TURN_RIGHT";
         case SEARCH: return "SEARCH";

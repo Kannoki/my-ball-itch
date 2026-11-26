@@ -152,7 +152,9 @@ enum EdgeMode {
 // Thu nghiem IR 8 mat: nho huong quay cho den khi line tro lai giua.
 #define LINE_TURN_TIMEOUT_MS     1000
 #define LINE_TURN_MIN_MS         80  // Khong nham line cu thanh line moi ngay khi bat dau quay
-#define LINE_TURN_POSITION       2.0f // Lech >= 2 buoc mat va cham mep thi vao che do re
+#define LINE_TURN_POSITION       1.5f // Nhan ca cum 5 mat o goc 90 do, khong doi lech toi 2.0
+#define LINE_TURN_CENTER_MS      30   // Line o giua on dinh 30 ms moi ket thuc re
+#define LINE_TURN_PWM            165  // Quay cham de bat lai line, tranh vuot qua tam
 
 #ifdef BOARD_ESP32_38PIN
 // Day chan cam bien cho ESP32 38-pin (cum GPIO ben phai, ho tro INPUT & INPUT_PULLUP)

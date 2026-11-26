@@ -21,8 +21,9 @@ Xem hướng dẫn nguồn điện (Pin 2S 7.4V + mạch hạ áp LM2596 5.0V) v
 
 Bộ điều khiển nằm ở [src/line_tracking.cpp](src/line_tracking.cpp), được gọi mỗi **10 ms**, lọc đa số **2/3 mẫu**:
 
-- **FOLLOW:** tìm từng cụm mắt active liên tục, tính tâm cụm theo vị trí S1 = −3.5 đến S8 = +3.5. Nếu có nhiều cụm, chọn cụm gần vị trí line lần trước. Tăng/giảm tốc độ hai bên theo sai số và độ thay đổi sai số. Line 20 mm đi giữa thường tạo cụm S3–S6; không ép chỉ hai mắt giữa phải active.
-- **TURN_LEFT / TURN_RIGHT:** cụm chạm S1 hoặc S8, tâm lệch ít nhất **2 bước mắt** về phía đó → giữ hướng xoay tại chỗ, kể cả khi tạm mất line. Chỉ thoát khi đã quay ít nhất **80 ms** và line trở lại S4/S5, không còn S1/S2/S7/S8 active. Quá **1000 ms** chưa về giữa thì dừng.
+- **FOLLOW:** tìm từng cụm mắt active liên tục, tính tâm cụm theo vị trí S1 = −3.5 đến S8 = +3.5. Nếu có nhiều cụm, chọn cụm gần vị trí line lần trước. Làm mượt sai số với hệ số 0.45; tăng/giảm tốc độ hai bên theo sai số và độ thay đổi sai số được chuẩn hóa theo thời gian lấy mẫu. Line 20 mm đi giữa thường tạo cụm S3–S6; không ép chỉ hai mắt giữa phải active.
+- **APPROACH_LEFT / APPROACH_RIGHT:** cụm chạm S1 hoặc S8, tâm lệch ít nhất **1.5 bước mắt** về phía đó → tiến chậm **65 ms** (`SHARP_TURN_LEAD_DELAY_MS`) để trục bánh tới góc, rồi mới quay. Nhận cả cụm 5 mắt tại góc 90°.
+- **TURN_LEFT / TURN_RIGHT:** giữ hướng xoay với PWM cấu hình **165** (trước power auto), kể cả khi tạm mất line. Sau ít nhất **80 ms**, phải thấy line hẹp ở giữa (sai số ≤ 0.5, không còn S1/S2/S7/S8) ổn định **30 ms** trên cả mẫu thô và mẫu lọc mới thoát rẽ. Trong lúc xác nhận tâm, ra lệnh dừng quay; khi bắt lại line thì tiến chậm trước. Driver vẫn áp dụng ramp PWM. Quá **1000 ms** tính từ lúc bắt đầu quay thì dừng.
 - **SEARCH:** nếu mất line sau khi đã lệch về một bên, xoay theo hướng lệch cuối tối đa **750 ms**. Không có hướng lệch trước đó thì dừng.
 - **CROSS_PASS:** cả 8 mắt active trong hai mẫu liên tiếp → đi thẳng tối đa **140 ms**; sau đó bám lại line. Nếu vẫn toàn active thì dừng. Với nhiều nhánh, ưu tiên cụm gần đường đang bám; lúc đang đi giữa thường tiếp tục thẳng. Không nhận dạng ý nghĩa mũi tên hoặc giải mê cung.
 - **STOPPED:** sau timeout, giữ dừng cho đến khi tắt/bật auto bằng nút `1` (hoặc đảo logic `I`). Không tự chạy lại khi đặt xe xuống line.
