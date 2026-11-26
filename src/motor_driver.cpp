@@ -78,6 +78,7 @@ struct MotorChannel {
     const int pwmPin;
     const int pwmChannel;
     int outputPercent;
+    int minimumOutputDuty;     // Auto: san PWM THUC TE sau scale; manual = 0 (giu ramp cu)
 
     // Huong dien tinh hien tai tren chan huong (dang giu khi PWM = 0)
     int electricalDirection;   // -1 / 0 / +1
@@ -99,11 +100,11 @@ struct MotorChannel {
 // Kenh vat ly: B = OUT3/OUT4 (trai mac dinh), A = OUT1/OUT2 (phai mac dinh)
 static MotorChannel channelB{
     PIN_MOTOR_LEFT_IN3, PIN_MOTOR_LEFT_IN4, PIN_MOTOR_LEFT_ENB, PWM_CH_LEFT,
-    100, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
+    100, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
 };
 static MotorChannel channelA{
     PIN_MOTOR_RIGHT_IN1, PIN_MOTOR_RIGHT_IN2, PIN_MOTOR_RIGHT_ENA, PWM_CH_RIGHT,
-    100, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
+    100, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
 };
 
 // Lenh BLE chay tren task khac voi vong lap cap nhat PWM.
@@ -113,7 +114,14 @@ static std::mutex motorMutex;
 // Ghi PWM / GPIO
 // ------------------------------------------------------------------------------
 static int motorOutputDuty(const MotorChannel& motor, int duty) {
-    return (constrain(duty, 0, 255) * motor.outputPercent) / 100;
+    if (duty == 0) return 0;
+    const int scaled = (constrain(duty, 0, 255) * motor.outputPercent) / 100;
+    if (motor.minimumOutputDuty == 0) return scaled; // Manual giu hanh vi cu.
+    // De-pa auto phai du luc; khong scale no xuong duoi nguong khoi hanh.
+    if (motor.boosting) return max(motor.minimumOutputDuty, MOTOR_START_PWM);
+    // Power chi giam phan tren san, khong nhan ca san: 165 + (185-165)*65% = 178.
+    const int aboveMinimum = max(0, constrain(duty, 0, 255) - motor.minimumOutputDuty);
+    return motor.minimumOutputDuty + aboveMinimum * motor.outputPercent / 100;
 }
 
 static void writeMotorPwm(const MotorChannel& motor, int duty) {
@@ -167,6 +175,7 @@ void motorDriverInit() {
 
     auto resetChannel = [](MotorChannel& motor) {
         motor.outputPercent = 100;
+        motor.minimumOutputDuty = 0;
         motor.electricalDirection = 0;
         motor.commandedDirection = 0;
         motor.targetDuty = 0;
@@ -202,7 +211,8 @@ static int normalizedSpeedToDuty(int speed) {
 // tang khong bi cat bang so nguyen.
 static void rampMotorChannel(MotorChannel& motor, unsigned long now) {
     // --- Het nhip de-pa: chuyen sang ramp binh thuong ---
-    if (motor.boosting && now - motor.boostStartedAt >= MOTOR_START_MS) {
+    const unsigned long boostMs = motor.minimumOutputDuty > 0 ? MOTOR_AUTO_START_MS : MOTOR_START_MS;
+    if (motor.boosting && now - motor.boostStartedAt >= boostMs) {
         motor.boosting = false;
         motor.rampAccum = motor.appliedDuty * 1000;
     }
@@ -370,6 +380,9 @@ void runLR(int vL, int vR, int powerPercent, bool immediate) {
     MotorChannel* leftChannel = runtimeConfig.swapLeftRight ? &channelA : &channelB;
     MotorChannel* rightChannel = runtimeConfig.swapLeftRight ? &channelB : &channelA;
 
+    leftChannel->minimumOutputDuty = immediate ? runtimeConfig.minPwmLeft : 0;
+    rightChannel->minimumOutputDuty = immediate ? runtimeConfig.minPwmRight : 0;
+
     // Khi dung giu power cu de khong tang PWM bat ngo trong luc ramp xuong 0.
     if (vL != 0 && leftChannel->outputPercent != constrain(powerPercent, 0, 100)) {
         leftChannel->outputPercent = constrain(powerPercent, 0, 100);
@@ -386,9 +399,11 @@ void runLR(int vL, int vR, int powerPercent, bool immediate) {
                         runtimeConfig.deadbandRight, runtimeConfig.minPwmRight, now);
 
     if (immediate) {
-        // Auto can quay/dung ngay khi sensor thay goc. Lenh tay van de-pa/ramp nhu cu.
+        // Auto bo ramp nhung van de-pa NGAN khi tu dung sang chay.
         auto applyNow = [now](MotorChannel& motor) {
-            motor.boosting = false;
+            if (motor.targetDuty == 0 || now - motor.boostStartedAt >= MOTOR_AUTO_START_MS) {
+                motor.boosting = false;
+            }
             const int direction = motor.targetDuty == 0 ? 0 : motor.commandedDirection;
             if (direction != motor.electricalDirection) {
                 writeMotorPwm(motor, 0);
@@ -402,6 +417,14 @@ void runLR(int vL, int vR, int powerPercent, bool immediate) {
         };
         applyNow(*leftChannel);
         applyNow(*rightChannel);
+        static unsigned long lastAutoLogAt = 0;
+        if (now - lastAutoLogAt >= 500) {
+            lastAutoLogAt = now;
+            Serial.printf("[AutoMotor] Cmd L=%d R=%d | PWM L=%d R=%d | Min L=%d R=%d\n",
+                          vL, vR, motorOutputDuty(*leftChannel, leftChannel->appliedDuty),
+                          motorOutputDuty(*rightChannel, rightChannel->appliedDuty),
+                          runtimeConfig.minPwmLeft, runtimeConfig.minPwmRight);
+        }
         return;
     }
 

@@ -56,7 +56,7 @@ bool motorDriverUpdate();
  * @param vR Van toc do ben phai (-1000 den +1000, so am la chay lui)
  */
 // Lenh thuong mac dinh 100%; auto truyen MOTOR_OUTPUT_PERCENT rieng.
-// immediate=true cho auto: bo de-pa/ramp de khong tre lenh re/dung.
+// immediate=true cho auto: bo ramp, giu de-pa ngan va san PWM thuc te de xe khoi hanh.
 void runLR(int vL, int vR, int powerPercent = 100, bool immediate = false);
 
 /**
