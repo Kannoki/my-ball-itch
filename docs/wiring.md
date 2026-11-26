@@ -90,6 +90,11 @@ Mạch LM2596 cấp nguồn 5 V cho ESP32-S3, Servo 2, Servo 3 và cảm biến 
   - Đấu song song 2 động cơ bên PHẢI vào cọc **OUT1** và **OUT2**.
   - Kẹp chung 2 dây của 2 động cơ bên Phải vào OUT1 và OUT2. (Vì động cơ bên phải lắp đối xứng cơ học 180° nên phần mềm đã tự động đảo cờ `INVERT_RIGHT_MOTORS = true` để xe đi đúng chiều).
 
+> [!NOTE]
+> `INVERT_LEFT_MOTORS` / `INVERT_RIGHT_MOTORS` / `SWAP_LEFT_RIGHT_MOTORS` chỉ ảnh hưởng **chiều quay vật lý của từng bên**,
+> được áp dụng ở tầng ghi GPIO nên **không làm sai hướng xoay** của xe (`runTurnLeft` luôn xoay sang trái).
+> Nếu đấu sai, có thể sửa ngay trên app bằng lệnh `XI` / `XR` / `XS` — xem [mục 6.1](#61-quy-trình-chẩn-đoán-nhanh-qua-ble-không-cần-nạp-lại-firmware).
+
 Nếu dây bên trái đã vào `OUT1/OUT2` và dây bên phải vào `OUT3/OUT4`, đặt `SWAP_LEFT_RIGHT_MOTORS` thành `true` trong `include/config.h`. Thử mũi tên trái và phải ở Standby để kiểm tra hướng quay thực tế.
 
 ---
@@ -219,3 +224,79 @@ Dự án tích hợp giao thức Nordic UART Service (NUS) tương thích 100% v
 5. [ ] **Kiểm tra hướng động cơ.** Đấu mặc định trái vào OUT3/OUT4 và phải vào OUT1/OUT2. Khi thử lệnh tiến trong Standby, các bánh ở cả hai bên cùng đẩy xe về trước. Dùng `INVERT_LEFT_MOTORS` hoặc `INVERT_RIGHT_MOTORS` để chỉnh chiều quay của từng bên vật lý nếu cần.
 6. [ ] **An toàn chạy thử:** Đã kê bánh xe của robot hổng lên khỏi mặt bàn khi cắm nạp code lần đầu tiên.
 7. [ ] **Kiểm tra Serial:** Mở Serial Monitor ở tốc độ Baud `115200` để xem log và trạng thái cảm biến 8 mắt.
+
+---
+
+## 6. XE KHẮC PHỤC SỰ CỐ MOTOR KHÔNG CHẠY
+
+### 6.1. Quy trình chẩn đoán nhanh (qua BLE, KHÔNG cần nạp lại firmware)
+
+Kết nối app **Adafruit Bluefruit LE Connect** → tab **UART Terminal** → gửi lệnh:
+
+| Bước | Lệnh | Làm gì |
+| :--- | :--- | :--- |
+| 1 | `X` | In báo cáo: duty hiện tại, mức GPIO `IN1..IN4`, cực quay, dead-band. **Quan sất mục "KIEM TRA JUMPER ENA/ENB"** — nếu báo `CANH BAO` thì xem mục 6.2. |
+| 2 | `X1` | Tự kiểm tra: **trái tiến → phải tiến → trái lùi → phải lùi**. **Quan sát 2 bên có quay cùng chiều không.** |
+| 3 | `XI` / `XR` | Nếu 2 bên quay **ngược chiều nhau**, gửi `XI` hoặc `XR` để đảo đúng bên. Lặp lại `X1` để xác nhận. |
+| 4 | `XS` | Nếu bạn thấy `X1` quay **đúng bên trái nhưng là bên phải** (hoặc ngược lại), dùng `XS` để hoán đổi kênh vật lý. |
+| 5 | `XM 170 175` | Nếu xe chạy nhưng kéo yếu / rung, tăng duty tối thiểu. |
+| 6 | `XD 120 120` | Nếu bánh trong của vòng cong cứ quay kéo (không dừng hẳn), **giảm** ngưỡng dead-band. |
+
+> Sau khi tìm được giá trị đúng, **chép ngược lại vào [`include/config.h`](../include/config.h)**
+> (`INVERT_LEFT_MOTORS`, `INVERT_RIGHT_MOTORS`, `SWAP_LEFT_RIGHT_MOTORS`) để giữ nguyên sau khi nạp lại firmware.
+
+### 6.2. ⚠️ Nguyên nhân số 1: CÒN JUMPER 5V TRÊN ENA / ENB
+
+**Đây là nguyên nhân gây "động cơ không chạy" phổ biến nhất.**
+
+L298N có 2 nắp jumper trên chân `ENA` và `ENB`:
+- **Còn jumper** → chân `ENA`/`ENB` bị **ký sinh cứng ở mức 5 V**, chặn tín hiệu PWM từ ESP32.
+  Kết quả: động cơ chạy **hết tốc** hoặc **không chạy**, và ESP32 **không điều khiển được**.
+- **Đã rút jumper** → ESP32 điều khiển tốc độ bằng PWM như thiết kế.
+
+**Cách kiểm tra nhanh:** gửi lệnh `X`. Nếu báo `CANH BAO: ENA/ENB dang keo len HIGH khi duty=0` → **rút jumper**.
+
+> [!IMPORTANT]
+> **Phải rút CẢ HAI jumper `ENA` VÀ `ENB`.** Rút mới đúng một bên vẫn sẽ có một bánh không chạy đúng.
+
+### 6.3. Nguyên nhân số 2: Thiếu Mass chung (Common GND)
+
+Tất cả phải nối **chung GND**: Pin (−) ↔ LM2596 `OUT-` ↔ ESP32 `GND` ↔ L298N `GND` ↔ cảm biến `GND` ↔ servo `GND`.
+Nếu thiếu mass chung, tín hiệu `IN1..IN4` không xác định → động cơ đứng yên hoặc chạy lung tung.
+
+### 6.4. Nguyên nhân số 3: Điện áp nguồn sai
+
+| Hạng mục | Yêu cầu | Cách kiểm tra |
+| :--- | :--- | :--- |
+| LM2596 ra | **5,0 V** (chỉnh **trước khi** cắm tải) | VOM giữa `OUT+` và `OUT-` |
+| L298N `12V` | Cấp từ pin 2S (7,4 V) | VOM giữa `12V` và `GND` |
+| Cọc `5V` của L298N | **ĐỂ TRỐNG** (không nối vào ESP32/LM2596) | Kiểm tra bằng mắt |
+| Jumper `5V Enable` trên L298N | **VẪN CẮM** (để IC 78M05 tự lấy nguồn) | Kiểm tra bằng mắt |
+
+> [!WARNING]
+> Nếu LM2596 **chưa chỉnh đúng 5,0 V** trước khi cắm ESP32, ESP32 có thể chết. Luôn chỉnh **trước**, đo lại **sau**.
+
+### 6.5. Nguyên nhân số 4: Duty quá thấp (động cơ không đủ mô-men khởi động)
+
+L298N có tổn thất điện áp khoảng **1,4–2 V** trên cầu H-bridge. Với pin 2S (7,4 V) và tải nặng (xe + 4 động cơ),
+duty dưới khoảng **165/255 (65 %)** thường **không kéo được** động cơ.
+
+Cách xử lý:
+1. Firmware đã có **nhịp đề-pa** `245/255` trong `120 ms` khi khởi hành — nếu xe vẫn không chạy, kiểm tra nguồn.
+2. Tăng duty tối thiểu qua BLE: `XM 180 180` (rồi chép giá trị này vào `config.h`).
+3. Kiểm tra 2 động cơ cùng bên **có được đấu song song đúng cực** (2 dây đỏ vào một cọc, 2 dây đen vào cọc kia).
+   Nếu 1 động cơ đấu ngược cực với động cơ kia, chúng **triệt tiêu nhau** và bên đó không quay.
+
+### 6.6. Bảng tra nhanh
+
+| Triệu chứng | Nguyên nhân khả dĩ | Cách xử lý |
+| :--- | :--- | :--- |
+| Không bên nào chạy | Còn jumper `ENA`/`ENB` | Rút cả 2 jumper (mục 6.2) |
+| Không bên nào chạy | Thiếu mass chung | Nối chung GND (mục 6.3) |
+| Không bên nào chạy | Sai điện áp LM2596 | Chỉnh lại 5,0 V (mục 6.4) |
+| Chạy hết tốc, không điều khiển được | Còn jumper `ENA`/`ENB` | Rút jumper (mục 6.2) |
+| Xe xoay tại chỗ thay vì đi thẳng | Cực quay 2 bên ngược nhau | `X1` → dùng `XI`/`XR` (mục 6.1) |
+| Bên trái chạy, bên phải không | 2 động cơ phải đấu ngược cực | Kiểm tra lại dây, dùng `XR` |
+| Xe kéo yếu, rung | Duty dưới ngưỡng kéo | `XM 180 180` (mục 6.5) |
+| Bánh trong vòng cong kéo theo | Dead-band quá cao | `XD 120 120` (mục 6.1) |
+| Xe lắc, mất vạch | PID chưa tinh chỉnh | Xem [README](../README.md) → điều chỉnh `PID_KP`/`PID_KD` |

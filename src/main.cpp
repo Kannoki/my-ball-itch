@@ -49,7 +49,7 @@ void setup() {
     bleControllerInit();
 
     // Dừng động cơ, chờ người dùng bấm phím 1 trên app
-    stopMotors();
+    stopMotion();
 
     Serial.println("==================================================");
     Serial.println("[System] KHOI DONG THANH CONG!");
@@ -59,7 +59,18 @@ void setup() {
     Serial.println("==================================================");
 }
 
-static void searchForLine(uint8_t raw, unsigned long now, int baseSpeed) {
+// Chuyen van toc do chuan hoa (-1000..+1000) sang duty PWM (0-255) va nguoc lai.
+// He so PID duoc giu nguyen tren thang do PWM de khong phai chinh lai.
+static int speedToPwm(int normalizedSpeed) {
+    const int magnitude = constrain(abs(normalizedSpeed), 0, MOTOR_SPEED_SCALE);
+    return (int)((long)magnitude * 255L / MOTOR_SPEED_SCALE);
+}
+
+static int pwmToSpeed(int pwm) {
+    return (int)((long)constrain(pwm, -255, 255) * MOTOR_SPEED_SCALE / 255L);
+}
+
+static void searchForLine(uint8_t raw, unsigned long now, int baseSpeedPwm) {
     if (tracking.searchDirection == 0) {
         tracking.lostAt = now;
         tracking.hasPreviousError = false;
@@ -84,20 +95,27 @@ static void searchForLine(uint8_t raw, unsigned long now, int baseSpeed) {
     }
 
     if (now - tracking.lostAt >= LINE_SEARCH_TIMEOUT_MS) {
-        stopMotors();
+        stopMotion();
     } else if (tracking.searchDirection < 0) {
-        spinLeft(min(baseSpeed, MOTOR_SEARCH_SPEED));
+        runTurnLeft(pwmToSpeed(min(baseSpeedPwm, MOTOR_SEARCH_SPEED_PWM)));
     } else {
-        spinRight(min(baseSpeed, MOTOR_SEARCH_SPEED));
+        runTurnRight(pwmToSpeed(min(baseSpeedPwm, MOTOR_SEARCH_SPEED_PWM)));
     }
 }
 
+// Ben trong cua vong tron se dung that (0) khi yeu cau PWM nho hon dead-band,
+// thay vi bi "keo hai" o duty nho khong duoc chay -> xe om cong sach hon.
 static int clampCurveMotorSpeed(int rawSpeed, int minPwm) {
-    // Cho phep banh trong cua dung han (0) khi can om cua gat, tranh ep chay tien o muc minPwm.
-    if (rawSpeed < (minPwm * 3) / 4) {
+    const int deadband = getMotorRuntimeConfig().deadbandLeft;
+    if (rawSpeed < deadband) {
         return 0;
     }
-    return constrain(rawSpeed, minPwm, MOTOR_MAX_SPEED);
+    return constrain(rawSpeed, minPwm, MOTOR_MAX_SPEED_PWM);
+}
+
+// Lam tron duty theo buoc 5/255 de tranh PWM nhieu lien tuc gay tieng keo.
+static int quantizePwm(int pwm) {
+    return (pwm / 5) * 5;
 }
 
 static void processLineTracking() {
@@ -107,7 +125,7 @@ static void processLineTracking() {
         tracking = {};
         tracking.mode = mode;
         tracking.activeLevel = activeLevel;
-        stopMotors();
+        stopMotion();
     }
 
     const unsigned long now = millis();
@@ -129,10 +147,10 @@ static void processLineTracking() {
         return;
     }
 
-    const int baseSpeed = motorBaseSpeed;
+    const int baseSpeedPwm = motorBaseSpeed > 0 ? speedToPwm(motorBaseSpeed) : MOTOR_BASE_SPEED_PWM;
     LineEdge edge;
     if (!findLineEdge(filteredRaw, mode, tracking.lastEdge.position, edge)) {
-        searchForLine(filteredRaw, now, baseSpeed);
+        searchForLine(filteredRaw, now, baseSpeedPwm);
         return;
     }
 
@@ -154,18 +172,25 @@ static void processLineTracking() {
     tracking.sharpTurn = fabsf(error) >= turnThreshold && fabsf(edge.position) > SHARP_TURN_EXIT_THRESHOLD &&
                          error * edge.position > 0.0f;
     if (tracking.sharpTurn) {
-        const int speed = min(baseSpeed, MOTOR_SPIN_SPEED);
-        if (error < 0.0f) spinLeft(speed);
-        else spinRight(speed);
+        const int speedPwm = min(baseSpeedPwm, MOTOR_SPIN_SPEED_PWM);
+        if (error < 0.0f) runTurnLeft(pwmToSpeed(speedPwm));
+        else runTurnRight(pwmToSpeed(speedPwm));
         return;
     }
 
-    const int cruiseSpeed = max(MOTOR_MIN_SPEED, baseSpeed - static_cast<int>(LINE_CURVE_SPEED_DROP * fabsf(error)));
+    const int cruiseSpeed = max(MOTOR_MIN_SPEED_PWM,
+                                baseSpeedPwm - static_cast<int>(LINE_CURVE_SPEED_DROP * fabsf(error)));
     const float correction = PID_KP * error + PID_KD * derivative;
-    const int leftSpeed = clampCurveMotorSpeed(static_cast<int>(cruiseSpeed + correction), MOTOR_MIN_PWM_LEFT);
-    const int rightSpeed = clampCurveMotorSpeed(static_cast<int>(cruiseSpeed - correction), MOTOR_MIN_PWM_RIGHT);
 
-    setMotorSpeeds(leftSpeed, rightSpeed);
+    // Hieu chinh theo he van toc do chuan hoa: ben trai tang, ben phai giam
+    // khi xe lech sang phai (error > 0) - luon o frame robot, khong phu thuoc
+    // INVERT_*/SWAP_* (do cuc thuoc tinh duoc apply o tang driver).
+    const int leftSpeed = clampCurveMotorSpeed(
+        static_cast<int>(cruiseSpeed + correction), MOTOR_MIN_PWM_LEFT);
+    const int rightSpeed = clampCurveMotorSpeed(
+        static_cast<int>(cruiseSpeed - correction), MOTOR_MIN_PWM_RIGHT);
+
+    runLR(pwmToSpeed(quantizePwm(leftSpeed)), pwmToSpeed(quantizePwm(rightSpeed)));
 }
 
 void loop() {
@@ -183,7 +208,7 @@ void loop() {
     if (isTracking) {
         if (!wasTracking) {
             tracking = {};
-            stopMotors();
+            stopMotion();
         }
         processLineTracking();
     }

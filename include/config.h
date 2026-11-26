@@ -66,19 +66,56 @@ enum EdgeMode {
 #define PWM_CH_SERVO2   4     // Kenh PWM LEDC 4 (Timer 2) cho Servo 2
 #define PWM_CH_SERVO3   6     // Kenh PWM LEDC 6 (Timer 3) cho Servo 3
 
-// Toc do mac dinh
-#define MOTOR_BASE_SPEED    185 // Toc do co ban khi di thang (0-255)
-#define MOTOR_MAX_SPEED     250 // Toc do toi da khi tang toc (0-255)
-#define MOTOR_MIN_PWM_LEFT  165 // PWM nho nhat khi dong co trai chay
-#define MOTOR_MIN_PWM_RIGHT 165 // PWM nho nhat khi dong co phai chay
-constexpr int MOTOR_MIN_SPEED = MOTOR_MIN_PWM_LEFT > MOTOR_MIN_PWM_RIGHT ? MOTOR_MIN_PWM_LEFT : MOTOR_MIN_PWM_RIGHT;
-#define MOTOR_START_PWM     245 // Duty toi thieu trong nhip de-pa khi bat dau quay
-#define MOTOR_START_MS      120 // Thoi gian de-pa truoc khi ve duty yeu cau
-#define MOTOR_MANUAL_SPEED  220 // Toc do khi dieu khien bang tay qua BLE
-#define MOTOR_SEARCH_SPEED  185 // Toc do xoay tim lai vach khi bi vang khoi ranh gioi
-#define MOTOR_SPIN_SPEED    195 // Toc do xoay gat tai cho khi gap goc vuong 90 do / cua chu U
+// ==============================================================================
+// VAN TOC DO (CHUAN HOA -1000 .. +1000, LAY CAM HUNG TU LbMotion.runLR CUA LEANBOT)
+// ==============================================================================
+// Frame cua robot: dau (+) = tien, dau (-) = lui, cho CA HAI ben.
+// Phan cuc thuoc tinh vat ly (INVERT_*/SWAP_*) duoc apply o TANG DRIVER,
+// nen runTurnLeft LUON xoay sang trai du doi mau chan hay kiem tra chan.
+#define MOTOR_SPEED_SCALE        1000  // Gia tri toi da cua van toc do chuan hoa
+#define MOTOR_SPEED_STEP          40   // Buoc tang/giam khi lenh '+'/'-' qua BLE (~10/255)
 
-// Dao chieu quay theo ben vat ly cua xe, voi toc do duong la tien.
+// Van toc do mac dinh (don vi chuan hoa)
+#define MOTOR_BASE_SPEED         725   // ~185/255 : toc do co ban khi di thang
+#define MOTOR_MAX_SPEED          980   // ~250/255 : toc do toi da khi tang toc
+#define MOTOR_MIN_SPEED          647   // ~165/255 : nhanh nhat ma van chay duoc
+#define MOTOR_MANUAL_SPEED       863   // ~220/255 : toc do khi dieu khien bang tay qua BLE
+#define MOTOR_SEARCH_SPEED       725   // ~185/255 : toc do xoay tim lai vach khi bi vang khoi ranh gioi
+#define MOTOR_SPIN_SPEED         765   // ~195/255 : toc do xoay gat tai cho gap goc vuong 90 do / cua chu U
+
+// Thang do PWM tuong ung (0-255) - dung cho he so PID va tinh toan trong main.cpp
+#define MOTOR_BASE_SPEED_PWM     185
+#define MOTOR_MAX_SPEED_PWM      250
+#define MOTOR_MIN_SPEED_PWM      165
+#define MOTOR_SEARCH_SPEED_PWM   185
+#define MOTOR_SPIN_SPEED_PWM     195
+
+// Thong so PWM (mien driver, 0 - 255)
+// MOTOR_MIN_PWM_*   : duty nho nhat ma van chay duoc (ngoai dai co truot)
+// MOTOR_DEADBAND_*  : yeu cau duty nho hon ngan -> DUNG THAT (duty = 0).
+//                     Dat bang MOTOR_MIN_PWM_* de che do "dung han" sach,
+//                     dat NHO HON de tao vung "creep" (banh trong chay cham).
+#define MOTOR_MIN_PWM_LEFT       165
+#define MOTOR_MIN_PWM_RIGHT      165
+#define MOTOR_DEADBAND_PWM_LEFT   120
+#define MOTOR_DEADBAND_PWM_RIGHT  120
+#define MOTOR_START_PWM          245   // Duty toi thieu trong nhip de-pa khi bat dau quay
+#define MOTOR_START_MS           120   // Thoi gian de-pa truoc khi ve duty yeu cau
+#define MOTOR_RAMP_MS            150   // Thoi gian de chuyen duty giua 2 muc (lam mat chay)
+
+// Ty le van toc do ben trong khi re cong (%). 60 => ben trong chay 60% ben ngoai.
+// Luu y: phai lon hon nguong dead-band (xem MOTOR_DEADBAND_PWM_*) de banh trong
+// van chay duoc trong khi re cong; neu nho hon, ben trong se DUNG (duty 0).
+#define MOTOR_ARC_INNER_RATIO     60
+
+// Van toc do dung cho phep tu kiem tra dong co (phai >= MOTOR_MIN_SPEED)
+#define MOTOR_SELFTEST_SPEED    700
+
+// Dao chieu quay theo ben vat ly cua xe.
+// LUU Y: 3 co nay la GIA TRI KHOI TAO cho tang driver. Chung co the doi runtime
+// qua lenh BLE (XI / XR / XS) ma KHONG can nap lai firmware.
+// Chúng duoc apply o TANG GHI GPIO, KHONG phai tren toc do da lenh, nen viec
+// dao mot ben KHONG lam sai huong xoay (runTurnLeft luon xoay sang trai).
 #define INVERT_LEFT_MOTORS     false
 #define INVERT_RIGHT_MOTORS    true
 // Mac dinh Trai=OUT3/4, Phai=OUT1/2. Dat true neu day hai ben dau vao kenh nguoc lai.

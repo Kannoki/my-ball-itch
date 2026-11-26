@@ -19,6 +19,9 @@
 RobotMode currentRobotMode = MODE_STANDBY_BLE; // Mac dinh khi khoi dong la DUNG YEN CHO
 bool bleTelemetryStreamEnabled = true;          // Mac dinh truyen luong trang thai sensor ve BLE
 
+// Co lenh chay tu kiem tra dong co tu lenh BLE 'X1' khong?
+static bool selfTestRequested = false;
+
 void toggleBleTelemetryStream() {
     bleTelemetryStreamEnabled = !bleTelemetryStreamEnabled;
 }
@@ -45,7 +48,7 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
     if (button == '1' && pressed) {
         if (currentRobotMode == MODE_LINE_TRACKING) {
             currentRobotMode = MODE_STANDBY_BLE;
-            stopMotors();
+            stopMotion();
             bleSendLog("Trang thai: TAM DUNG (Standby). Bam '1' de tiep tuc do vien.\n");
             Serial.println("[Mode] TAM DUNG DO VIEN (Standby)");
         } else {
@@ -85,16 +88,16 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
         if (pressed) {
             switch (button) {
                 case '5': // UP - Tien
-                    moveForward(MOTOR_MANUAL_SPEED);
+                    runForward(MOTOR_MANUAL_SPEED);
                     break;
                 case '6': // DOWN - Lui
-                    moveBackward(MOTOR_MANUAL_SPEED);
+                    runBackward(MOTOR_MANUAL_SPEED);
                     break;
                 case '7': // LEFT - Re trai
-                    spinLeft(MOTOR_MANUAL_SPEED);
+                    runTurnLeft(MOTOR_MANUAL_SPEED);
                     break;
                 case '8': // RIGHT - Re phai
-                    spinRight(MOTOR_MANUAL_SPEED);
+                    runTurnRight(MOTOR_MANUAL_SPEED);
                     break;
                 default:
                     break;
@@ -102,7 +105,7 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
         } else {
             // Khi nha nut dieu huong -> dung xe
             if (button >= '5' && button <= '8') {
-                stopMotors();
+                stopMotion();
             }
         }
     }
@@ -121,6 +124,95 @@ static void handleUartText(const String& text) {
     // Tro giup / Bao cao chan doan sensor chi tiet: ?, H hoac h
     if (c == '?' || c == 'H' || c == 'h') {
         bleSendLog(getSensorTelemetryDetailed());
+        bleSendLog(getMotorDiagnostics());
+        return;
+    }
+
+    // ======================================================================
+    // LENH CHAN DOAN & CAU HINH DONG CO (tien to 'X')
+    // ======================================================================
+    // "X"   : bao cao chan doan dong co
+    // "X1"  : tu kiem tra - quay lan luot trai/phai, tien/lui
+    // "XI"  : dao chieu quay ben trai
+    // "XR"  : dao chieu quay ben phai
+    // "XS"  : hoan doi kenh vat ly 2 ben
+    // "XM <l> <r>" : dat duty nho nhat ma van chay duoc
+    // "XD <l> <r>" : dat ngan dead-band (duoi -> dung that)
+    if (c == 'X' || c == 'x') {
+        String sub = cmd.substring(1);
+        sub.trim();
+
+        if (sub.length() == 0) {
+            bleSendLog(getMotorDiagnostics());
+            bleSendLog("Lenh: X1 (tu kiem tra) | XI | XR | XS | XM <l> <r> | XD <l> <r>\n");
+            return;
+        }
+
+        const char sub0 = sub.charAt(0);
+
+        if (sub0 == '1' && sub.length() == 1) {
+            // Tu kiem tra chi chay o che do Standby de khong tranh voi vong do line
+            if (currentRobotMode != MODE_STANDBY_BLE) {
+                currentRobotMode = MODE_STANDBY_BLE;
+                stopMotors();
+            }
+            bleSendLog("Dang tu kiem tra dong co: TRAI tien -> PHAI tien -> TRAI lui -> PHAI lui.\n");
+            bleSendLog("Quan sat huong quay: 2 ben phai cung CHIEU khi cung lenh 'tien'.\n");
+            selfTestRequested = true;
+            return;
+        }
+
+        if (sub0 == 'I' || sub0 == 'i') {
+            toggleInvertLeft();
+            bleSendLog("INVERT_LEFT -> " + String(getMotorRuntimeConfig().invertLeft ? "ON" : "OFF") + "\n");
+            return;
+        }
+        if (sub0 == 'R' || sub0 == 'r') {
+            toggleInvertRight();
+            bleSendLog("INVERT_RIGHT -> " + String(getMotorRuntimeConfig().invertRight ? "ON" : "OFF") + "\n");
+            return;
+        }
+        if (sub0 == 'S' || sub0 == 's') {
+            toggleSwapLeftRight();
+            bleSendLog("SWAP_LEFT_RIGHT -> " + String(getMotorRuntimeConfig().swapLeftRight ? "ON" : "OFF") + "\n");
+            return;
+        }
+
+        if (sub0 == 'M' || sub0 == 'm') {
+            // "XM 170 175"
+            const int sp1 = sub.indexOf(' ');
+            if (sp1 > 0) {
+                const int l = sub.substring(sp1 + 1).toInt();
+                const int r = sub.substring(sp1 + 1).indexOf(' ') >= 0
+                                 ? sub.substring(sp1 + 1).substring(sub.substring(sp1 + 1).indexOf(' ') + 1).toInt()
+                                 : l;
+                setMotorMinPwm(l, r);
+                bleSendLog("MIN PWM -> L=" + String(getMotorRuntimeConfig().minPwmLeft) +
+                           " R=" + String(getMotorRuntimeConfig().minPwmRight) + "\n");
+            } else {
+                bleSendLog("Cu phap: XM <minPwmTrai> <minPumPhai>  (VD: XM 170 175)\n");
+            }
+            return;
+        }
+
+        if (sub0 == 'D' || sub0 == 'd') {
+            // "XD 120 120"
+            const int sp1 = sub.indexOf(' ');
+            if (sp1 > 0) {
+                const int l = sub.substring(sp1 + 1).toInt();
+                const int r = sub.substring(sp1 + 1).indexOf(' ') >= 0
+                                 ? sub.substring(sp1 + 1).substring(sub.substring(sp1 + 1).indexOf(' ') + 1).toInt()
+                                 : l;
+                setMotorDeadband(l, r);
+                bleSendLog("DEADBAND -> L=" + String(getMotorRuntimeConfig().deadbandLeft) +
+                           " R=" + String(getMotorRuntimeConfig().deadbandRight) + "\n");
+            } else {
+                bleSendLog("Cu phap: XD <deadbandTrai> <deadbandPhai>  (VD: XD 120 120)\n");
+            }
+            return;
+        }
+
+        bleSendLog("Lenh 'X' khong hop le. Dung: X | X1 | XI | XR | XS | XM <l> <r> | XD <l> <r>\n");
         return;
     }
 
@@ -159,12 +251,12 @@ static void handleUartText(const String& text) {
 
     // Tang / Giam toc do co ban khi do line: '+' hoac '-'
     if (c == '+') {
-        motorBaseSpeed = min(motorBaseSpeed + 10, MOTOR_MAX_SPEED);
+        motorBaseSpeed = min(motorBaseSpeed + MOTOR_SPEED_STEP, MOTOR_MAX_SPEED);
         bleSendLog("MOTOR_BASE_SPEED -> " + String(motorBaseSpeed) + "\n");
         return;
     }
     if (c == '-') {
-        motorBaseSpeed = max(motorBaseSpeed - 10, MOTOR_MIN_SPEED);
+        motorBaseSpeed = max(motorBaseSpeed - MOTOR_SPEED_STEP, MOTOR_MIN_SPEED);
         bleSendLog("MOTOR_BASE_SPEED -> " + String(motorBaseSpeed) + "\n");
         return;
     }
@@ -173,7 +265,7 @@ static void handleUartText(const String& text) {
     if ((c == '1' || c == 'M' || c == 'm') && cmd.length() == 1) {
         if (currentRobotMode == MODE_LINE_TRACKING) {
             currentRobotMode = MODE_STANDBY_BLE;
-            stopMotors();
+            stopMotion();
             bleSendLog("Mode -> STANDBY (Tam dung)\n");
         } else {
             currentRobotMode = MODE_LINE_TRACKING;
@@ -215,23 +307,23 @@ static void handleUartText(const String& text) {
     if (currentRobotMode == MODE_STANDBY_BLE) {
         switch (c) {
             case 'F': case 'f':
-                moveForward(MOTOR_MANUAL_SPEED);
+                runForward(MOTOR_MANUAL_SPEED);
                 bleSendLog("Moving Forward\n");
                 break;
             case 'B': case 'b':
-                moveBackward(MOTOR_MANUAL_SPEED);
+                runBackward(MOTOR_MANUAL_SPEED);
                 bleSendLog("Moving Backward\n");
                 break;
             case 'L': case 'l':
-                spinLeft(MOTOR_MANUAL_SPEED);
+                runTurnLeft(MOTOR_MANUAL_SPEED);
                 bleSendLog("Turning Left\n");
                 break;
             case 'R': case 'r':
-                spinRight(MOTOR_MANUAL_SPEED);
+                runTurnRight(MOTOR_MANUAL_SPEED);
                 bleSendLog("Turning Right\n");
                 break;
             case 'S': case 's':
-                stopMotors();
+                stopMotion();
                 bleSendLog("Stopped\n");
                 break;
             default:
@@ -382,6 +474,14 @@ void bleControllerUpdate() {
     static unsigned long disconnectedAt = 0;
     const bool connected = deviceConnected;
     const unsigned long now = millis();
+
+    // Tu kiem tra dong co (duoc yeu cau qua lenh BLE 'X1')
+    if (selfTestRequested) {
+        if (runMotorSelfTest()) {
+            selfTestRequested = false;
+            bleSendLog(getMotorDiagnostics());
+        }
+    }
 
     if (connected) {
         retryAdvertising = false;

@@ -19,9 +19,19 @@ Xem hướng dẫn nguồn điện (Pin 2S 7.4V + mạch hạ áp LM2596 5.0V) v
 
 ## 📌 Tính Năng Chính
 
-- **Điều khiển 4 động cơ L298N (`PWM 10 kHz`):**
-  - 2 động cơ **TRÁI** đấu song song vào `OUT3 & OUT4`, 2 động cơ **PHẢI** đấu song song vào `OUT1 & OUT2` (có thể đảo bên bằng `SWAP_LEFT_RIGHT_MOTORS` và đảo chiều từng bên bằng `INVERT_LEFT_MOTORS` / `INVERT_RIGHT_MOTORS` trong `include/config.h`).
-  - Có nhịp đề-pa `245/255` trong `120 ms` khi khởi hành, tự giảm/dừng bánh trong khi ôm cua gắt.
+- **Điều khiển 4 động cơ L298N theo kiểu `LbMotion.runLR` (Leanbot-style):**
+  - API chính: **`runLR(vL, vR)`** với **vận tốc chuẩn hoá `-1000..+1000`** trong *frame robot* (dương = tiến, âm = lùi, cho **cả hai bên**).
+  - `runLR(1000, 1000)` = đi thẳng · `runLR(0, 0)` = dừng · `runLR(-500, 500)` = xoay tại chỗ sang trái.
+  - Lớp trên cùng: `runForward` / `runBackward` / `runTurnLeft` / `runTurnRight` / `runArcLeft` / `runArcRight` / `stopMotion`.
+  - **Cực thực tế vật lý** (`INVERT_LEFT_MOTORS` / `INVERT_RIGHT_MOTORS` / `SWAP_LEFT_RIGHT_MOTORS`) được áp dụng **ở tầng ghi GPIO**, *không* áp lên tốc độ đã lệnh — nên việc đảo một bên **không làm sai hướng xoay** (`runTurnLeft` luôn xoay sang trái).
+  - **Vùng chết (dead-band)** tách khỏi **duty tối thiểu**: yêu cầu nhỏ hơn dead-band → **dừng thật** (duty = 0) thay vì kéo hai động cơ.
+  - **Ramp duty** trong `150 ms` + nhịp đề-pa `245/255` trong `120 ms` khi khởi hành, tránh giật khi đổi chiều.
+- **Tự chẩn đoán & cấu hình runtime qua BLE (không cần nạp lại firmware):**
+  - `X` — báo cáo chẩn đoán động cơ (duty, mức GPIO `IN1..IN4`, cực, dead-band) + cảnh báo **còn jumper 5V trên ENA/ENB**.
+  - `X1` — **tự kiểm tra**: trái tiến → phải tiến → trái lùi → phải lùi (để xác nhận 2 bên có quay cùng chiều).
+  - `XI` / `XR` / `XS` — đảo chiều quay bên trái / bên phải / hoán đổi kênh vật lý 2 bên.
+  - `XM <l> <r>` — đặt duty tối thiểu mà vẫn chạy được.
+  - `XD <l> <r>` — đặt ngưỡng dead-band.
 - **3 Servo điều khiển độc lập qua LEDC phần cứng (`50 Hz`, 14-bit):**
   - Tách riêng timer & kênh LEDC (`ch 2, 4, 6`, tránh xung đột timer `0` của động cơ).
   - **Servo 1 (`TD-8120MG`):** dải xung `500–2500 µs`, góc quay `0°–270°`.
@@ -32,6 +42,32 @@ Xem hướng dẫn nguồn điện (Pin 2S 7.4V + mạch hạ áp LM2596 5.0V) v
 - **An toàn & điều khiển qua BLE (Adafruit Bluefruit LE Connect):**
   - Khởi động luôn ở chế độ **Standby** (dừng toàn bộ động cơ), chỉ chạy tự động khi bấm **Nút `1`**.
   - Truyền trạng thái cảm biến theo thời gian thực không chặn vòng lặp PID (`non-blocking TX queue` mỗi `300 ms`).
+
+---
+
+## 🔌 API Điều Khiển Động Cơ (cho lập trình viên)
+
+Toàn bộ điều khiển động cơ nằm trong [`include/motor_driver.h`](include/motor_driver.h).
+
+| Hàm | Ý nghĩa |
+| :--- | :--- |
+| `runLR(vL, vR)` | **API chính.** Vận tốc chuẩn hoá `-1000..+1000`, *frame robot* (dương = tiến cho cả hai bên). |
+| `runForward(speed)` | Tiến thẳng (cả hai bên). |
+| `runBackward(speed)` | Lùi. |
+| `runTurnLeft(speed)` | **Xoay tại chỗ sang trái** — bên phải tiến, bên trái lùi. |
+| `runTurnRight(speed)` | **Xoay tại chỗ sang phải** — bên trái tiến, bên phải lùi. |
+| `runArcLeft(speed)` / `runArcRight(speed)` | Rẽ cong (bên trong chạy chậm, **không đảo chiều**). |
+| `stopMotion()` | Dừng cả hai bên (duty = 0, thả chân hướng). |
+| `getMotorRuntimeConfig()` / `applyMotorRuntimeConfig(cfg)` | Đọc/ghi cấu hình runtime (cực quay, dead-band, duty tối thiểu). |
+| `toggleInvertLeft()` / `toggleInvertRight()` / `toggleSwapLeftRight()` | Đảo cực quay tại runtime. |
+| `getMotorDiagnostics()` | Báo cáo chẩn đoán (duty, mức GPIO, cảnh báo jumper). |
+| `runMotorSelfTest(stepMs)` | Tự kiểm tra: trái tiến → phải tiến → trái lùi → phải lùi. |
+
+**Quy ước quan trọng:**
+- Mọi lệnh đều dùng **frame robot** — `runTurnLeft` **luôn** xoay sang trái, bất kể cách đấu dây hay cờ `INVERT_*`/`SWAP_*`.
+- Cực thực tế vật lý được áp dụng ở **tầng ghi GPIO** (`motor_driver.cpp`), không phải trên tốc độ đã lệnh.
+- Đơn vị vận tốc chuẩn hoá: `1000` = hết tốc. Quy đổi sang PWM: `duty = speed * 255 / 1000`.
+- Hàm cũ (`setMotorSpeeds`, `moveForward`, `spinLeft`, …) vẫn còn nhưng **dùng đơn vị PWM 0–255**; nên dùng API mới cho code mới.
 
 ---
 
@@ -101,6 +137,19 @@ pio device monitor -b 115200
      - `P`: Bật / Tắt `INPUT_PULLUP` cho các chân cảm biến.
      - `E`: Bật / Tắt đèn phát IR (khi dùng mạch có chân `IR_EN`).
      - `T`: Bật / Tắt luồng telemetry tự động.
-     - `+` / `-`: Tăng / Giảm tốc độ cơ bản (`MOTOR_BASE_SPEED`).
+     - `+` / `-`: Tăng / Giảm tốc độ cơ bản (`MOTOR_BASE_SPEED`, bước `40`).
      - `2`, `3`, `4` hoặc `S1 <góc/µs>`, `S2 <góc>`, `S3 <góc>`: Điều khiển trực tiếp từng servo.
      - `F`, `B`, `L`, `R`, `S`: Tiến, lùi, quay trái, quay phải, dừng (khi ở Standby).
+     - `X`: Báo cáo chẩn đoán động cơ (duty, mức GPIO, cực, dead-band, cảnh báo jumper ENA/ENB).
+     - `X1`: Tự kiểm tra động cơ — trái tiến → phải tiến → trái lùi → phải lùi.
+     - `XI` / `XR` / `XS`: Đảo chiều quay bên trái / bên phải / hoán đổi kênh vật lý 2 bên.
+     - `XM <l> <r>`: Đặt duty tối thiểu mà vẫn chạy được (VD `XM 170 175`).
+     - `XD <l> <r>`: Đặt ngưỡng dead-band (VD `XD 120 120`).
+
+> **Lưu ý về `XI` / `XR` / `XS`:** đây là **cấu hình runtime trong RAM**, mất khi khởi động lại.
+> Khi tìm được giá trị đúng, hãy chép ngược lại vào
+> [`include/config.h`](include/config.h) (`INVERT_LEFT_MOTORS` / `INVERT_RIGHT_MOTORS` / `SWAP_LEFT_RIGHT_MOTORS`).
+
+### 🛠️ Troubleshooting: Động cơ không chạy
+
+Xem mục **"XE KHẮC PHỤC SỰ CỐ MOTOR KHÔNG CHẠY"** trong [docs/wiring.md](docs/wiring.md).
