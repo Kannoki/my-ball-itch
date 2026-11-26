@@ -3,6 +3,12 @@
 
 #include <Arduino.h>
 
+// Chuoi thao tac sau giao lo 8 mat. Goc quay can hieu chinh tren xe that.
+#define CROSS_REVERSE_DEFAULT_MS  2000
+#define CROSS_FORWARD_CONFIRM_MS   200
+#define CROSS_TURN_45_MS           300
+#define CROSS_SERVO_SETTLE_MS       600
+
 // ==============================================================================
 // CHE DO HOAT DONG CUA ROBOT
 // ==============================================================================
@@ -118,19 +124,15 @@ enum RobotMode {
 #endif
 #define SENSOR_MASK       static_cast<uint8_t>((1U << NUM_SENSORS) - 1U)
 
-// Van doc du NUM_SENSORS; mask chi ap dung khi tinh line. Nhan cross IR dung du 8 mat.
+// Bit 0 la S1 ngoai cung ben trai. Moi mat tham gia tinh line.
 #ifdef SENSOR_TCRT5000_5CH
 #define LINE_LEFT_MASK           0x03 // S1, S2
 #define LINE_CENTER_MASK         0x04 // S3
 #define LINE_RIGHT_MASK          0x18 // S4, S5
-#elif defined(SENSOR_PHOTORESISTOR)
+#else
 #define LINE_LEFT_MASK           0x0F // S1..S4
 #define LINE_CENTER_MASK         0x00
 #define LINE_RIGHT_MASK          0xF0 // S5..S8
-#else
-#define LINE_LEFT_MASK           0x0A // S2, S4 (danh so 1..8)
-#define LINE_CENTER_MASK         0x00 // Tam line la S4/S5: moi mat o mot ben
-#define LINE_RIGHT_MASK          0x50 // S5, S7
 #endif
 #define LINE_TRACKING_MASK static_cast<uint8_t>(LINE_LEFT_MASK | LINE_CENTER_MASK | LINE_RIGHT_MASK)
 
@@ -183,7 +185,8 @@ enum RobotMode {
 // 3. DO LINE CO BAN
 // ==============================================================================
 #define LINE_SAMPLE_INTERVAL_MS    10   // Doc 100 lan/giay, xac nhan hai lan cung ket luan
-#define CROSS_LINE_PASS_DELAY_MS  140   // Di thang qua nga tu toi da 140 ms
+#define CROSS_LINE_PASS_DELAY_MS  140   // Gioi han di qua mau toan den cua ban 5 mat
+#define LINE_RECOVERY_FORWARD_MS  140   // Giu moc sau khi bat lai line va thu di thang
 
 // ==============================================================================
 // 4. CAU HINH CHAN TIN HIEU CHO 3 SERVO (CHAY DOC LAP)

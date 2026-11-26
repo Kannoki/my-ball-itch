@@ -87,7 +87,6 @@ uint8_t readRawSensors() {
     return decodeSensorPins(readDirectGpioPins());
 }
 
-// Cac luat do line co ban. Khong tinh PID, sai so hay truong hop mo ho.
 LineAction getLineAction(uint8_t raw) {
     if ((raw & SENSOR_MASK) == SENSOR_MASK) return LINE_CROSS;
 
@@ -95,8 +94,7 @@ LineAction getLineAction(uint8_t raw) {
     const bool center = (raw & LINE_CENTER_MASK) != 0;
     const bool right = (raw & LINE_RIGHT_MASK) != 0;
 
-    // Thay line can hai ben: di thang. Nga ba cung mac dinh di thang.
-    // Bao gom ca hai mau -.-##-.- va -#-..-#- tren thanh IR 8 mat.
+    // Thay line o giua (ban 5 mat) hoac ca hai ben thi di thang.
     if (center || (left && right)) return LINE_FORWARD;
     if (left) return LINE_LEFT;
     if (right) return LINE_RIGHT;

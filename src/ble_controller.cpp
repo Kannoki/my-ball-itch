@@ -1,6 +1,7 @@
 #include "ble_controller.h"
 #include "motor_driver.h"
 #include "line_sensor.h"
+#include "line_tracking.h"
 #include "servo1.h"
 #include "servo2.h"
 #include "servo3.h"
@@ -111,6 +112,52 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
     }
 }
 
+static String handleReverseTimeCommand(const String& cmd) {
+    if (!cmd.substring(0, 3).equalsIgnoreCase("REV")) return "";
+    if (cmd.length() > 3) {
+        const char* usage = "Dung REV <ms> (1..2147483647), vi du REV 2000\n";
+        if (cmd[3] != ' ' && cmd[3] != '\t') return usage;
+
+        String argument = cmd.substring(4);
+        argument.trim();
+        uint32_t duration = 0;
+        for (unsigned int i = 0; i < argument.length(); ++i) {
+            const char c = argument[i];
+            if (c < '0' || c > '9') return usage;
+            const uint32_t digit = c - '0';
+            if (duration > (INT32_MAX - digit) / 10) return usage;
+            duration = duration * 10 + digit;
+        }
+        if (duration == 0) return usage;
+        setCrossReverseDuration(duration);
+    }
+    return String("REV -> ") + String(getCrossReverseDuration()) + " ms\n";
+}
+
+static void pollSerialReverseTime() {
+    static char line[32];
+    static size_t length = 0;
+    static bool overflow = false;
+
+    while (Serial.available() > 0) {
+        const char c = static_cast<char>(Serial.read());
+        if (c == '\r' || c == '\n') {
+            if (length > 0 && !overflow) {
+                line[length] = '\0';
+                String command(line);
+                command.trim();
+                Serial.print(handleReverseTimeCommand(command));
+            }
+            length = 0;
+            overflow = false;
+        } else if (length < sizeof(line) - 1) {
+            line[length++] = c;
+        } else {
+            overflow = true;
+        }
+    }
+}
+
 // Ham xu ly ky tu / chuoi text tu man hinh UART Terminal cua Bluefruit app
 static void handleUartText(const String& text) {
     String cmd = text;
@@ -119,12 +166,19 @@ static void handleUartText(const String& text) {
 
     Serial.printf("[BLE UART] Nhan: %s\n", cmd.c_str());
 
+    const String reverseReply = handleReverseTimeCommand(cmd);
+    if (reverseReply.length() != 0) {
+        bleSendLog(reverseReply);
+        return;
+    }
+
     char c = cmd.charAt(0);
 
     // Tro giup / Bao cao chan doan sensor chi tiet: ?, H hoac h
     if (c == '?' || c == 'H' || c == 'h') {
         bleSendLog(getSensorTelemetryDetailed());
         bleSendLog(getMotorDiagnostics());
+        bleSendLog("REV [ms]: xem/dat thoi gian lui sau giao lo\n");
         return;
     }
 
@@ -244,7 +298,10 @@ static void handleUartText(const String& text) {
 
     // V chi nhac lai luat; khong con nhieu che do do line de doi nham.
     if (c == 'V' || c == 'v') {
-        bleSendLog("DO LINE CO BAN: trang=dung, trai=re trai, phai=re phai, hai ben=thang.\n");
+        bleSendLog("DO LINE: trai=re trai, phai=re phai, hai ben=thang.\n");
+#if NUM_SENSORS == 8
+        bleSendLog("Mat line co moc: lui ve moc va thu di thang. Sau giao lo con line thang 200 ms: chay chuoi servo.\n");
+#endif
         return;
     }
 
@@ -468,6 +525,7 @@ static void pumpBleTxQueue(unsigned long now) {
 }
 
 void bleControllerUpdate() {
+    pollSerialReverseTime();
     static bool wasConnected = false;
     static bool retryAdvertising = false;
     static unsigned long disconnectedAt = 0;

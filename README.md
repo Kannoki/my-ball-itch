@@ -15,21 +15,21 @@ Firmware robot dò line dùng **PlatformIO** (Arduino framework) hỗ trợ **ES
 
 Xem hướng dẫn nguồn điện (Pin 2S 7.4V + mạch hạ áp LM2596 5.0V) và tổng quan hệ thống tại [docs/wiring.md](docs/wiring.md).
 
-### Dò line bằng vài luật if/else
+### Dò line và xử lý giao lộ
 
-Với `s3-ir` và `esp32-ir`, vẫn đọc đủ **8 mắt**, nhưng chỉ dùng **S2/S4** làm bên trái và **S5/S7** làm bên phải. S1/S3/S6/S8 chỉ tham gia kiểm tra **cả 8 mắt cùng đen**. Số sensor bắt đầu từ **1**.
+Ba cấu hình 8 mắt dùng **S1–S4 bên trái** và **S5–S8 bên phải**. Cấu hình TCRT5000 5 mắt dùng S1/S2 bên trái, S3 ở giữa và S4/S5 bên phải. Thấy S3 thì đi thẳng.
 
 Các luật nằm trong `getLineAction()` ở [src/line_sensor.cpp](src/line_sensor.cpp):
 
-- Không thấy line ở bên nào → **dừng** (`STOP`).
+- Không thấy mắt nào đọc đen → **mất line** (`STOP`).
 - Chỉ thấy bên trái → **rẽ trái** (`LEFT`): dừng bánh trái, chạy bánh phải.
 - Chỉ thấy bên phải → **rẽ phải** (`RIGHT`): chạy bánh trái, dừng bánh phải.
-- Thấy cả hai bên → **đi thẳng** (`FORWARD`). Cả `-.-##-.-` và `-#-..-#-` đều thuộc luật này; ngã ba cũng mặc định đi thẳng.
-- Đủ **8 mắt cùng đen** → **cross** (`CROSS`): đi thẳng tối đa **140 ms**; nếu vẫn toàn đen thì dừng. Khi đọc lại được line bình thường thì tiếp tục theo các luật trên.
+- Thấy cả hai bên → **đi thẳng** (`FORWARD`). Ví dụ, S4 và S5 cùng thấy đen.
+- Cả **8 mắt cùng đen** → **đi thẳng qua giao lộ** (`CROSS`). Bản 5 mắt đi thẳng tối đa 140 ms trên mẫu toàn đen.
 
-Đọc mỗi **10 ms**. Cùng một kết luận hai lần liên tiếp mới đổi hướng; không thấy line thì ra lệnh dừng ngay. Không có PID, dò mép, tự xoay tìm line hay `AMBIGUOUS`. Cấu hình TCRT5000 5 mắt dùng S1/S2 bên trái, S3 ở giữa, S4/S5 bên phải; thấy S3 thì đi thẳng. Quang trở 8 mắt dùng S1–S4 bên trái và S5–S8 bên phải.
+Xe lấy mẫu mỗi **10 ms** và xác nhận hai lần liên tiếp trước khi đổi hướng. Trên xe 8 mắt, hai mẫu mất line liên tiếp sau khi rẽ hoặc qua giao lộ sẽ kích hoạt lùi về mốc nếu xe chưa bắt lại line thẳng đủ **140 ms**. Xe đảo lệnh motor theo thứ tự ngược, rồi thử đi thẳng một lần trong **140 ms**, tạm dừng đếm khi còn trên giao lộ. Nếu vẫn mất line, xe chờ line thẳng ổn định. Mất line khi không có mốc thì xe dừng ngay.
 
-Phần biến hành động thành lệnh motor nằm trong `processLineTracking()` ở [src/main.cpp](src/main.cpp). Ví dụ rẽ trái:
+Phần điều khiển motor nằm trong [src/line_tracking.cpp](src/line_tracking.cpp). Ví dụ, khi rẽ trái, xe ra lệnh:
 
 ```cpp
 runLR(0, speed, MOTOR_OUTPUT_PERCENT); // Bánh trái dừng, bánh phải chạy.
@@ -37,9 +37,22 @@ runLR(0, speed, MOTOR_OUTPUT_PERCENT); // Bánh trái dừng, bánh phải chạ
 
 **Power chỉ dành cho auto:** `MOTOR_OUTPUT_PERCENT` hiện là **88%** và chỉ được truyền từ hàm dò line. Điều khiển tay, servo và các lệnh motor khác giữ hoạt động bình thường; `runLR(left, right)` mặc định power **100%**. Power là tỷ lệ PWM đầu ra, áp dụng cả đề-pa, không phải phép đo vận tốc bánh xe.
 
-Telemetry ví dụ: `R:00011000 [...##...] U:-.-##-.- FORWARD`. `R` là đủ 8 mức GPIO; `[...]` là các bit được giải mã theo `LINE_ACTIVE_STATE`; `U` đánh dấu các mắt dùng dò line (`-` = bỏ qua, `#` = đen theo cấu hình, `.` = trắng). Trạng thái dùng cùng hàm phân loại với điều khiển; telemetry hiển thị mẫu tức thời trước khi chờ hai kết luận liên tiếp.
+Ví dụ telemetry `R:00011000 [...##...] U:...##... FORWARD`. `R` là mức GPIO, `[...]` là mẫu đã giải mã theo `LINE_ACTIVE_STATE`, và `U` là mẫu dùng để dò line (`#` là đen, `.` là trắng). Telemetry hiển thị phân loại của mẫu hiện tại trước khi xác nhận hai lần đọc liên tiếp.
 
 IR 8 mắt mặc định **HIGH = đen**, dựa trên mẫu nền trắng đã đo `GPIO: 00000000`. Dùng `I` để đảo nếu phần cứng ngược logic. Nếu trắng và đen đều cho cùng mức GPIO, cần kiểm tra độ cao, phát IR và ngưỡng module: phần mềm không thể phân biệt các bề mặt có cùng tín hiệu số. Xem [Pololu: cảm biến phản xạ](https://www.pololu.com/docs/0J13/all).
+
+#### Chuỗi servo trên xe 8 mắt
+
+Khi bật dò line, servo 2 và 3 về **180°**. Nếu xe đang đi thẳng, gặp mẫu cả 8 mắt đen rồi bắt lại line thẳng liên tục **200 ms**, xe thực hiện lần lượt:
+
+1. Xoay phải tại chỗ **90°**, rồi lùi thẳng **2 giây** theo cài đặt mặc định.
+2. Đưa servo 2 về **0°**, chờ **600 ms** theo mặc định, rồi đưa servo 3 về **45°**.
+3. Xoay phải thêm **45°**, rồi lần lượt đưa servo 3 và servo 2 về **180°**.
+4. Xoay trái **45°**, tiến bằng thời gian đã lùi, xoay trái **90°**, rồi tiếp tục dò line.
+
+`CROSS_REVERSE_DEFAULT_MS` ở đầu [include/config.h](include/config.h) đặt thời gian lùi mặc định. Gửi `REV` để xem thời gian hiện tại hoặc `REV 2500` để đặt 2,5 giây cho lần chạy tiếp theo. Dùng tab BLE UART hoặc Serial Monitor **115200 baud** có ký tự xuống dòng. Cài đặt qua UART có hiệu lực đến khi khởi động lại.
+
+Firmware ước lượng góc quay và vị trí quay về bằng thời gian chạy motor. Hằng số `CROSS_TURN_45_MS` và `CROSS_SERVO_SETTLE_MS` dùng để hiệu chỉnh thời gian quay và chờ servo trên xe thật.
 
 ---
 
@@ -65,7 +78,7 @@ IR 8 mắt mặc định **HIGH = đen**, dựa trên mẫu nền trắng đã �
   - **Servo 2 & Servo 3:** dải xung `500–2500 µs`, góc quay `0°–180°`.
 - **Dò line linh hoạt (`5` hoặc `8` mắt):**
   - Các luật cơ bản: không thấy line thì dừng, lệch bên nào thì rẽ bên đó, thấy cả hai bên thì đi thẳng.
-  - Xác nhận hai kết luận liên tiếp để hạn chế nhiễu; cả 8 mắt đen thì đi thẳng qua cross tối đa 140 ms.
+  - Xác nhận hai kết luận liên tiếp để hạn chế nhiễu. Cả 8 mắt thấy đen thì xe tiếp tục đi thẳng qua giao lộ.
 - **An toàn & điều khiển qua BLE (Adafruit Bluefruit LE Connect):**
   - Khởi động luôn ở chế độ **Standby** (dừng toàn bộ động cơ), chỉ chạy tự động khi bấm **Nút `1`**.
   - Truyền trạng thái cảm biến theo thời gian thực không chặn vòng lặp dò line (`non-blocking TX queue` mỗi `300 ms`).
@@ -113,6 +126,7 @@ wdf-line-tracker/
 │   ├── config.h                       # Cấu hình GPIO, tốc độ, power auto, PWM, BLE
 │   ├── ble_controller.h               # BLE Nordic UART Service (Bluefruit)
 │   ├── line_sensor.h                  # Đọc cảm biến & phân loại thẳng/trái/phải/dừng
+│   ├── line_tracking.h                # Cập nhật dò line và cấu hình thời gian lùi
 │   ├── motor_driver.h                 # Điều khiển 4 động cơ L298N
 │   ├── servo_pwm.h                    # Helper LEDC 50Hz 14-bit dùng chung cho servo
 │   ├── servo1.h / servo2.h / servo3.h # Giao diện điều khiển 3 servo độc lập
@@ -120,6 +134,7 @@ wdf-line-tracker/
 │   ├── main.cpp                       # Vòng lặp chính & lệnh dò line if/else
 │   ├── ble_controller.cpp             # Xử lý gói Control Pad & UART non-blocking
 │   ├── line_sensor.cpp                # Đọc GPIO & các luật dò line cơ bản
+│   ├── line_tracking.cpp              # Dò line, lùi về mốc và chạy chuỗi servo
 │   ├── motor_driver.cpp               # Xuất PWM & điều hướng L298N
 │   ├── servo_pwm.cpp                  # Cấu hình LEDC phần cứng cho servo
 │   └── servo1.cpp / servo2.cpp / servo3.cpp
@@ -165,6 +180,7 @@ pio device monitor -b 115200
      - `E`: Bật / Tắt đèn phát IR (khi dùng mạch có chân `IR_EN`).
      - `T`: Bật / Tắt luồng telemetry tự động.
      - `+` / `-`: Tăng / Giảm tốc độ cơ bản (`MOTOR_BASE_SPEED`, bước `40`).
+     - `REV` / `REV <ms>`: Xem / đặt thời gian lùi trong chuỗi servo (VD `REV 2000`).
      - `2`, `3`, `4` hoặc `S1 <góc/µs>`, `S2 <góc>`, `S3 <góc>`: Điều khiển trực tiếp từng servo.
      - `F`, `B`, `L`, `R`, `S`: Tiến, lùi, quay trái, quay phải, dừng (khi ở Standby).
      - `X`: Báo cáo chẩn đoán động cơ (duty, mức GPIO, cực, dead-band, cảnh báo jumper ENA/ENB).

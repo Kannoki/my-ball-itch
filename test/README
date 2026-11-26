@@ -1,6 +1,16 @@
 
 This directory is intended for PlatformIO Test Runner and project tests.
 
+The line tracking regression test uses a host clock and mock GPIO, motors,
+and servos. After a PlatformIO build has created .pio/build, run from the
+project root with a host C++ compiler:
+
+    g++ -std=c++11 -Itest/host -Iinclude src/line_sensor.cpp src/line_tracking.cpp test/host/line_tracking_test.cpp -o .pio/build/line_tracking_test.exe
+    ./.pio/build/line_tracking_test.exe
+
+Add the board and sensor defines from platformio.ini to test another build
+environment.
+
 Unit Testing is a software testing method by which individual units of
 source code, sets of one or more MCU program modules together with associated
 control data, usage procedures, and operating procedures, are tested to
