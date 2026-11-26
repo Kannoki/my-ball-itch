@@ -34,10 +34,6 @@ struct LineTrackingState {
     bool enabled = false;
     MotorSteering steering;
 
-#if NUM_SENSORS == 5
-    bool crossing = false;
-    unsigned long crossStartedAt = 0;
-#else
     LineAction appliedAction = LINE_STOP;
     bool settlingServos = false;
     unsigned long servosStartedAt = 0;
@@ -78,33 +74,10 @@ struct LineTrackingState {
     unsigned long sequenceStartedAt = 0;
     unsigned long sequenceReverseMs = 0;
     int sequenceSpeed = 0;
-#endif
 };
 
 static LineTrackingState tracking;
 
-#if NUM_SENSORS == 5
-static void trackFiveSensors(uint8_t raw, LineAction action, bool confirmed, unsigned long now) {
-    if (tracking.crossing && now - tracking.crossStartedAt >= CROSS_LINE_PASS_DELAY_MS) {
-        stopMotion();
-    }
-    if (action == LINE_STOP) {
-        tracking.crossing = false;
-        stopMotion();
-        return;
-    }
-    if (!confirmed) return;
-
-    if (action == LINE_CROSS && !tracking.crossing) {
-        tracking.crossStartedAt = now;
-    }
-    tracking.crossing = action == LINE_CROSS;
-    if (!tracking.crossing || now - tracking.crossStartedAt < CROSS_LINE_PASS_DELAY_MS) {
-        const WheelSpeeds wheels = tracking.steering.update(raw, motorBaseSpeed, now);
-        runLR(wheels.left, wheels.right, MOTOR_OUTPUT_PERCENT);
-    }
-}
-#else
 using Recovery = LineTrackingState::Recovery;
 
 static void homeCrossServos(unsigned long now) {
@@ -374,7 +347,6 @@ static void trackEightSensors(uint8_t raw, LineAction action, bool confirmed, un
     }
     followLine(raw, action, now);
 }
-#endif
 
 void updateLineTracking(bool enabled) {
     if (!enabled) {
@@ -392,13 +364,10 @@ void updateLineTracking(bool enabled) {
         tracking.enabled = true;
         tracking.activeLevel = lineActiveState;
         tracking.sampledAt = now;
-#if NUM_SENSORS == 8
         homeCrossServos(now);
-#endif
         return;
     }
 
-#if NUM_SENSORS == 8
     if (tracking.settlingServos) {
         if (now - tracking.servosStartedAt < CROSS_SERVO_SETTLE_MS) return;
         tracking.settlingServos = false;
@@ -407,7 +376,6 @@ void updateLineTracking(bool enabled) {
         updateCrossSequence(now);
         return;
     }
-#endif
 
     const unsigned long elapsed = now - tracking.sampledAt;
     if (elapsed < LINE_SAMPLE_INTERVAL_MS) return;
@@ -416,9 +384,5 @@ void updateLineTracking(bool enabled) {
     const LineAction action = getLineAction(raw);
     const bool confirmed = action == tracking.previousSample;
     tracking.previousSample = action;
-#if NUM_SENSORS == 5
-    trackFiveSensors(raw, action, confirmed, now);
-#else
     trackEightSensors(raw, action, confirmed, now, elapsed);
-#endif
 }

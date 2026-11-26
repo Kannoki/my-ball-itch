@@ -112,40 +112,20 @@ enum RobotMode {
 #endif
 
 // ==============================================================================
-// 2. CAU HINH CHAN CAM BIEN DO LINE (5 SENSORS TCRT5000 2D4.1 HOAC 8 SENSORS)
+// 2. CAU HINH CHAN CAM BIEN DO LINE (IR 8 SENSORS)
 // ==============================================================================
-#ifdef SENSOR_TCRT5000_5CH
-#define NUM_SENSORS       5
-#define SENSOR_HEIGHT_MM  3.0f  // Khoang cach toi uu TCRT5000 2D4.1 (2 - 5 mm)
-#define SENSOR_PITCH_MM   18.0f // Buoc tam giua 2 mat TCRT5000 lien ke (~18 mm)
-#define LINE_WIDTH_MM     16.0f // Be ngang vach line den (16 mm)
-#else
 #define NUM_SENSORS       8
 #define SENSOR_HEIGHT_MM  0.5f  // Khoang cach tu mat doc sensor xuong mat dat (0.5 mm)
 #define SENSOR_PITCH_MM   6.0f  // Khoang cach giua 2 mat doc lien ke (6 mm)
-#ifdef SENSOR_PHOTORESISTOR
-#define LINE_WIDTH_MM     16.0f
-#else
 #define LINE_WIDTH_MM     20.0f // Be ngang line tren san IR hien tai (~20 mm)
-#endif
-#endif
 #define SENSOR_MASK       static_cast<uint8_t>((1U << NUM_SENSORS) - 1U)
 
 // Bit 0 la S1 ngoai cung ben trai. Moi mat tham gia tinh line.
-#ifdef SENSOR_TCRT5000_5CH
-#define LINE_LEFT_MASK           0x03 // S1, S2
-#define LINE_CENTER_MASK         0x04 // S3
-#define LINE_RIGHT_MASK          0x18 // S4, S5
-#else
 #define LINE_LEFT_MASK           0x0F // S1..S4
-#define LINE_CENTER_MASK         0x00
 #define LINE_RIGHT_MASK          0xF0 // S5..S8
-#endif
-#define LINE_TRACKING_MASK static_cast<uint8_t>(LINE_LEFT_MASK | LINE_CENTER_MASK | LINE_RIGHT_MASK)
 
 #ifdef BOARD_ESP32_38PIN
 // Day chan cam bien cho ESP32 38-pin (cum GPIO ben phai, ho tro INPUT & INPUT_PULLUP)
-#if !defined(SENSOR_PHOTORESISTOR) && !defined(SENSOR_TCRT5000_5CH)
 // Mirrored IR bar: logical S1 is physical D8.
 #define PIN_LINE_S1     16
 #define PIN_LINE_S2     17
@@ -155,25 +135,8 @@ enum RobotMode {
 #define PIN_LINE_S6     21
 #define PIN_LINE_S7     22
 #define PIN_LINE_S8     23
-#else
-#define PIN_LINE_S1     23  // Cam bien ngoai cung ben trai
-#define PIN_LINE_S2     22
-#define PIN_LINE_S3     21  // Giua (voi 5 mat) / Lech trai (voi 8 mat)
-#define PIN_LINE_S4     19  // Lech phai (voi 5 mat) / Giua trai (voi 8 mat)
-#define PIN_LINE_S5     18  // Ngoai cung phai (voi 5 mat) / Giua phai (voi 8 mat)
-#ifndef SENSOR_TCRT5000_5CH
-#define PIN_LINE_S6     5
-#define PIN_LINE_S7     17
-#define PIN_LINE_S8     16  // Cam bien ngoai cung ben phai
-#endif
 
-#endif
-
-#if defined(SENSOR_PHOTORESISTOR) || defined(SENSOR_TCRT5000_5CH)
-#define PIN_LINE_IR_EN  -1  // Quang tro va TCRT5000 2D4.1 (7 chan) khong co chan IR Enable
-#else
 #define PIN_LINE_IR_EN  4   // GPIO 4 xuat HIGH bat den IR (tranh GPIO 1 TX0 cua ESP32 38-pin)
-#endif
 #else
 #define PIN_LINE_S1     18
 #define PIN_LINE_S2     17
@@ -193,30 +156,17 @@ enum RobotMode {
 
 // Muc logic khi cam bien phat hien vach line den:
 // - IR 8 mat dang dung: da do GPIO 00000000 tren nen trang -> LOW la nen, HIGH la line.
-// - Quang tro (LDR) 8 mat: mac dinh vach DEN -> HIGH (1).
-// - TCRT5000 2D4.1 giu mac dinh LOW; dung lenh I de dao neu phan cung khac.
-#ifdef SENSOR_TCRT5000_5CH
-#define LINE_ACTIVE_STATE LOW
-#else
 #define LINE_ACTIVE_STATE HIGH
-#endif
 
 // ==============================================================================
 // 3. DO LINE CO BAN
 // ==============================================================================
-#if NUM_SENSORS == 5
-#define PID_KP 62.0f
-#define PID_KD 24.0f
-#define LINE_CURVE_SPEED_DROP 24.0f
-#else
 #define PID_KP 45.0f
 #define PID_KD 18.0f
 #define LINE_CURVE_SPEED_DROP 16.0f
-#endif
 #define LINE_ERROR_FILTER_ALPHA 0.45f
 #define COURSE_BEND_CONFIRM_MS 40
 #define LINE_SAMPLE_INTERVAL_MS    10   // Doc 100 lan/giay, xac nhan hai lan cung ket luan
-#define CROSS_LINE_PASS_DELAY_MS  140   // Gioi han di qua mau toan den cua ban 5 mat
 #define LINE_RECOVERY_FORWARD_MS  140   // Giu moc sau khi bat lai line va thu di thang
 
 // ==============================================================================

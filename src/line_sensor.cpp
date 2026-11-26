@@ -2,12 +2,8 @@
 
 // Mang chua cac chan GPIO cua cam bien theo thu tu tu trai qua phai
 static const uint8_t sensorPins[NUM_SENSORS] = {
-#if NUM_SENSORS == 5
-    PIN_LINE_S1, PIN_LINE_S2, PIN_LINE_S3, PIN_LINE_S4, PIN_LINE_S5
-#else
     PIN_LINE_S1, PIN_LINE_S2, PIN_LINE_S3, PIN_LINE_S4,
     PIN_LINE_S5, PIN_LINE_S6, PIN_LINE_S7, PIN_LINE_S8
-#endif
 };
 
 // Muc logic hien tai (mac dinh lay tu config.h, co the dao nhanh bang lenh 'I')
@@ -44,18 +40,13 @@ uint8_t readDirectGpioPins() {
     return direct;
 }
 
-static bool irEmitterState = (PIN_LINE_IR_EN >= 0);
+static bool irEmitterState = true;
 
 void setSensorIrEmitter(bool enable) {
-#if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
     irEmitterState = enable;
     pinMode(PIN_LINE_IR_EN, OUTPUT);
     digitalWrite(PIN_LINE_IR_EN, enable ? HIGH : LOW);
     Serial.printf("[Sensor] Chan IR Enable (GPIO %d) -> %s\n", PIN_LINE_IR_EN, enable ? "HIGH (BAT 8 LED PHAT)" : "LOW (TAT 8 LED PHAT)");
-#else
-    (void)enable;
-    irEmitterState = false;
-#endif
 }
 
 bool isSensorIrEmitterEnabled() {
@@ -65,18 +56,11 @@ bool isSensorIrEmitterEnabled() {
 void lineSensorInit() {
     setSensorIrEmitter(true);
     setSensorPullup(sensorPullupEnabled);
-#if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
     Serial.printf("[Sensor] Khoi tao %d mat do line! IR Enable: GPIO %d (HIGH) | Tro keo: %s | Muc bat vach den: %s\n",
                   NUM_SENSORS,
                   PIN_LINE_IR_EN,
                   sensorPullupEnabled ? "INPUT_PULLUP" : "INPUT",
                   (lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)");
-#else
-    Serial.printf("[Sensor] Khoi tao %d mat cam bien! IR Enable: KHONG DUNG | Tro keo: %s | Muc bat vach den: %s\n",
-                  NUM_SENSORS,
-                  sensorPullupEnabled ? "INPUT_PULLUP" : "INPUT",
-                  (lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)");
-#endif
 }
 
 static uint8_t decodeSensorPins(uint8_t pins) {
@@ -90,18 +74,14 @@ uint8_t readRawSensors() {
 LineAction getLineAction(uint8_t raw) {
     if ((raw & SENSOR_MASK) == SENSOR_MASK) return LINE_CROSS;
 
-#if NUM_SENSORS == 8
     // On the return straight the station arm extends to the robot's left.
     // It may cover S1 through S5 without reaching the far right sensor.
     if ((raw & 0x1F) == 0x1F) return LINE_CROSS;
     if (raw == 0xF8 || raw == 0xFC) return LINE_RIGHT;
-#endif
     const bool left = (raw & LINE_LEFT_MASK) != 0;
-    const bool center = (raw & LINE_CENTER_MASK) != 0;
     const bool right = (raw & LINE_RIGHT_MASK) != 0;
 
-    // Thay line o giua (ban 5 mat) hoac ca hai ben thi di thang.
-    if (center || (left && right)) return LINE_FORWARD;
+    if (left && right) return LINE_FORWARD;
     if (left) return LINE_LEFT;
     if (right) return LINE_RIGHT;
     return LINE_STOP;
@@ -124,7 +104,7 @@ static String getSensorStatus(uint8_t raw) {
 static String getTrackingPattern(uint8_t raw) {
     char pattern[NUM_SENSORS + 1];
     for (int i = 0; i < NUM_SENSORS; ++i) {
-        pattern[i] = !(LINE_TRACKING_MASK & (1 << i)) ? '-' : (raw & (1 << i)) ? '#' : '.';
+        pattern[i] = (raw & (1 << i)) ? '#' : '.';
     }
     pattern[NUM_SENSORS] = '\0';
     return String(pattern);
@@ -165,13 +145,9 @@ String getSensorTelemetryDetailed() {
         s += String((raw & (1 << i)) ? "#" : ".") + "     ";
     }
     s += "\nUse: " + getTrackingPattern(raw) + "\n";
-    s += "(#=active, .=inactive, -=skip)\n";
+    s += "(#=active, .=inactive)\n";
     s += "Logic : Active = " + String((lineActiveState == HIGH) ? "HIGH (1)" : "LOW (0)") + " ['I'=dao]\n";
-#if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
     s += "IR LED: " + String(isSensorIrEmitterEnabled() ? "BAT (GPIO " : "TAT (GPIO ") + String(PIN_LINE_IR_EN) + (isSensorIrEmitterEnabled() ? " = HIGH)" : " = LOW)") + " [Bam 'E' de bat/tat]\n";
-#else
-    s += "IR LED: KHONG DUNG\n";
-#endif
     s += "Pullup: " + String(sensorPullupEnabled ? "BAT (INPUT_PULLUP)" : "TAT (INPUT)") + " [Bam 'P' de dao]\n";
     s += "Mode: DO LINE CO BAN (if/else)\n";
     s += "Status: " + getSensorStatus(raw) + "\n";

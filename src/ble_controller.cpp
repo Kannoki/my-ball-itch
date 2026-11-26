@@ -272,13 +272,9 @@ static void handleUartText(const String& text) {
 
     // Bat / tat den LED phat hong ngoai (IR Emitter): E hoac e
     if (c == 'E' || c == 'e') {
-#if defined(PIN_LINE_IR_EN) && (PIN_LINE_IR_EN >= 0)
         bool newState = !isSensorIrEmitterEnabled();
         setSensorIrEmitter(newState);
         bleSendLog("IR EMITTER (GPIO " + String(PIN_LINE_IR_EN) + ") -> " + String(newState ? "BAT (HIGH)\n" : "TAT (LOW)\n"));
-#else
-        bleSendLog("IR EMITTER: KHONG DUNG tren module nay\n");
-#endif
         return;
     }
 
@@ -299,9 +295,7 @@ static void handleUartText(const String& text) {
     // V chi nhac lai luat; khong con nhieu che do do line de doi nham.
     if (c == 'V' || c == 'v') {
         bleSendLog("DO LINE: PD theo tam vach, di thang qua vach ngang.\n");
-#if NUM_SENSORS == 8
         bleSendLog("Mat line co moc: lui ve moc va thu di thang. Sau giao lo con line thang 200 ms: chay chuoi servo.\n");
-#endif
         return;
     }
 

@@ -104,8 +104,6 @@ Nếu dây bên trái đã vào `OUT1/OUT2` và dây bên phải vào `OUT3/OUT4
 > Tài liệu đấu nối riêng theo từng combo phần cứng:
 > - **ESP32-S3 + Cảm biến IR 8 mắt:** [docs/wiring-s3-ir.md](wiring-s3-ir.md)
 > - **ESP32 38-pin + Cảm biến IR 8 mắt:** [docs/wiring-esp32-ir.md](wiring-esp32-ir.md)
-> - **ESP32 38-pin + Cảm biến Quang trở 8 mắt:** [docs/wiring-esp32-photores.md](wiring-esp32-photores.md)
-> - **ESP32 38-pin + Cảm biến TCRT5000 2D4.1 (5 mắt):** [docs/wiring-esp32-tcrt5000-2d41.md](wiring-esp32-tcrt5000-2d41.md)
 
 Thanh cảm biến xếp từ trái sang phải: `S1 -> S2 -> S3 -> S4 -> S5 -> S6 -> S7 -> S8`.
 
@@ -132,7 +130,7 @@ Thanh cảm biến xếp từ trái sang phải: `S1 -> S2 -> S3 -> S4 -> S5 -> 
 >   - Cách 2: Nối chân **IR** vào chân **GPIO 1** của ESP32-S3 (firmware đã tự động cấu hình xuất mức `HIGH` để bật đèn).
 > - **Cách kiểm tra:** Sau khi nối IR vào nguồn, bật camera điện thoại soi vào 8 mắt phát: bạn sẽ thấy 8 bóng phát ánh sáng mờ màu tím hồng!
 
-> **Cách kiểm tra mức logic:** IR 8 mắt hiện mặc định `LINE_ACTIVE_STATE HIGH`, dựa trên mẫu nền trắng đã đo là `GPIO: 00000000`. TCRT5000 2D4.1 5 mắt vẫn mặc định LOW. Kiểm tra trên cả nền trắng và vạch đen; dùng lệnh `I` để đảo nếu module khác logic, hoặc cấu hình trong `include/config.h`:
+> **Cách kiểm tra mức logic:** IR 8 mắt hiện mặc định `LINE_ACTIVE_STATE HIGH`, dựa trên mẫu nền trắng đã đo là `GPIO: 00000000`. Kiểm tra trên cả nền trắng và vạch đen; dùng lệnh `I` để đảo nếu module khác logic, hoặc cấu hình trong `include/config.h`:
 >
 > ```cpp
 > #define LINE_ACTIVE_STATE HIGH

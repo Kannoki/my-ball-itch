@@ -37,10 +37,8 @@ static std::vector<ServoEvent> servoEvents;
 unsigned long millis() { return now; }
 
 int digitalRead(uint8_t pin) {
-    const uint8_t pins[] = { PIN_LINE_S1, PIN_LINE_S2, PIN_LINE_S3, PIN_LINE_S4, PIN_LINE_S5
-#if NUM_SENSORS == 8
-                             , PIN_LINE_S6, PIN_LINE_S7, PIN_LINE_S8
-#endif
+    const uint8_t pins[] = { PIN_LINE_S1, PIN_LINE_S2, PIN_LINE_S3, PIN_LINE_S4,
+                             PIN_LINE_S5, PIN_LINE_S6, PIN_LINE_S7, PIN_LINE_S8
     };
     for (unsigned int i = 0; i < NUM_SENSORS; ++i) {
         if (pins[i] == pin) return (sensorMask & (1U << i)) ? lineActiveState : !lineActiveState;
@@ -96,7 +94,6 @@ static void startTracking() {
     updateLineTracking(true);
 }
 
-#if NUM_SENSORS == 8
 constexpr uint8_t straight = 0x18;
 constexpr uint8_t cross = 0xFF;
 constexpr uint8_t leftOnly = 0x01;
@@ -348,17 +345,13 @@ static void testThreeServoStations() {
     expectMotor(MOTOR_PIVOT_SPEED, -MOTOR_PIVOT_SPEED);
 }
 
-#endif
 
 int main() {
-#if NUM_SENSORS == 8 && !defined(SENSOR_PHOTORESISTOR)
 #ifdef BOARD_ESP32_38PIN
     static_assert(PIN_LINE_S1 == 16 && PIN_LINE_S8 == 23 && PIN_LINE_IR_EN == 4, "ESP32 IR orientation");
 #else
     static_assert(PIN_LINE_S1 == 18 && PIN_LINE_S8 == 4 && PIN_LINE_IR_EN == 1, "S3 IR orientation");
 #endif
-#endif
-#if NUM_SENSORS == 8
     testAllMasks();
     startTracking();
     hold(0x0C, 4);
@@ -377,14 +370,4 @@ int main() {
     testCrossSequence();
     testStartBar();
     testThreeServoStations();
-#else
-    startTracking();
-    hold(0x04, 2);
-    expectMotor(motorBaseSpeed, motorBaseSpeed);
-    hold(SENSOR_MASK, 16);
-    expectMotor(0, 0);
-    hold(0);
-    expectMotor(0, 0);
-    assert(servoEvents.empty());
-#endif
 }

@@ -10,8 +10,6 @@ Firmware robot dò line dùng **PlatformIO** (Arduino framework) hỗ trợ **ES
 | :--- | :--- | :--- | :--- |
 | **`esp32-ir`** *(mặc định)* | ESP32 38-pin (`esp32dev`) | IR 8 mắt (`HY-S301` / `TCRT5000`) | [docs/wiring-esp32-ir.md](docs/wiring-esp32-ir.md) |
 | **`s3-ir`** | ESP32-S3 DevKitC-1 | IR 8 mắt (`HY-S301` / `TCRT5000`) | [docs/wiring-s3-ir.md](docs/wiring-s3-ir.md) |
-| **`esp32-photores`** | ESP32 38-pin (`esp32dev`) | Quang trở (LDR) 8 mắt | [docs/wiring-esp32-photores.md](docs/wiring-esp32-photores.md) |
-| **`esp32-tcrt5000-2d41`** | ESP32 38-pin (`esp32dev`) | TCRT5000 `2D4.1` (5 mắt, 7 chân) | [docs/wiring-esp32-tcrt5000-2d41.md](docs/wiring-esp32-tcrt5000-2d41.md) |
 
 Xem hướng dẫn nguồn điện (Pin 2S 7.4V + mạch hạ áp LM2596 5.0V) và tổng quan hệ thống tại [docs/wiring.md](docs/wiring.md).
 
@@ -23,14 +21,14 @@ Các bước xoay ở trạm dùng tốc độ riêng `MOTOR_PIVOT_SPEED` (725/1
 
 ### Dò line và xử lý giao lộ
 
-Ba cấu hình 8 mắt dùng **S1–S4 bên trái** và **S5–S8 bên phải**. Cấu hình TCRT5000 5 mắt dùng S1/S2 bên trái, S3 ở giữa và S4/S5 bên phải. Thấy S3 thì đi thẳng.
+Hai cấu hình IR 8 mắt dùng **S1–S4 bên trái** và **S5–S8 bên phải**.
 
 Các luật nằm trong `getLineAction()` ở [src/line_sensor.cpp](src/line_sensor.cpp):
 
 - Không thấy mắt nào đọc đen → **mất line** (`STOP`).
 - Khi bám vạch, xe dùng tâm của các mắt đang thấy line để điều chỉnh độc lập hai bánh. Bộ điều khiển PD dùng lại hệ số P/D của bản PID cũ, lọc sai lệch và giảm tốc trong cua.
 - Khi gặp vạch rộng, xe đi thẳng. Trên bản 8 mắt, S1–S5 cùng thấy line cũng nhận diện được nhánh trạm ngắn về bên trái xe.
-- Xe lấy mẫu mỗi 10 ms và xác nhận hai mẫu cùng loại. Nếu mất line ngay sau khi rẽ hoặc qua vạch ngang, xe lùi theo lệnh bánh đã lưu rồi thử đi thẳng lại. Bản 5 mắt đi thẳng tối đa 140 ms khi toàn bộ mắt cùng thấy line.
+- Xe lấy mẫu mỗi 10 ms và xác nhận hai mẫu cùng loại. Nếu mất line ngay sau khi rẽ hoặc qua vạch ngang, xe lùi theo lệnh bánh đã lưu rồi thử đi thẳng lại.
 
 **Power chỉ dành cho auto:** `MOTOR_OUTPUT_PERCENT` hiện là **88%** và chỉ được truyền từ hàm dò line. Điều khiển tay, servo và các lệnh motor khác giữ hoạt động bình thường; `runLR(left, right)` mặc định power **100%**. Power là tỷ lệ PWM đầu ra, áp dụng cả đề-pa, không phải phép đo vận tốc bánh xe.
 
@@ -79,7 +77,7 @@ Firmware ước lượng góc quay và vị trí quay về bằng thời gian ch
   - Tách riêng timer & kênh LEDC (`ch 2, 4, 6`, tránh xung đột timer `0` của động cơ).
   - **Servo 1 (`TD-8120MG`):** dải xung `500–2500 µs`, góc quay `0°–270°`.
   - **Servo 2 & Servo 3:** dải xung `500–2500 µs`, góc quay `0°–180°`.
-- **Dò line linh hoạt (`5` hoặc `8` mắt):**
+- **Dò line IR 8 mắt:**
   - Điều chỉnh tốc độ từng bánh theo tâm vạch. Trên sân 8 mắt, khi gặp góc vuông bên phải (S4–S8 hoặc S3–S8), xe giữ cua qua khoảng mất line tối đa 600 ms.
   - Xác nhận hai kết luận liên tiếp để hạn chế nhiễu. Cả 8 mắt thấy đen thì xe tiếp tục đi thẳng qua giao lộ.
 - **An toàn & điều khiển qua BLE (Adafruit Bluefruit LE Connect):**
@@ -122,8 +120,6 @@ wdf-line-tracker/
 │   ├── wiring.md                      # Tổng quan nguồn điện, L298N, Servo, BLE
 │   ├── wiring-esp32-ir.md             # Combo ESP32 38-pin + IR 8 mắt (mặc định)
 │   ├── wiring-s3-ir.md                # Combo ESP32-S3 + IR 8 mắt
-│   ├── wiring-esp32-photores.md       # Combo ESP32 38-pin + Quang trở 8 mắt
-│   ├── wiring-esp32-tcrt5000-2d41.md  # Combo ESP32 38-pin + TCRT5000 2D4.1 (5 mắt)
 │   └── wiring-signals.svg             # Sơ đồ tín hiệu ESP32-S3 tham khảo
 ├── include/
 │   ├── config.h                       # Cấu hình GPIO, tốc độ, power auto, PWM, BLE
@@ -141,7 +137,7 @@ wdf-line-tracker/
 │   ├── motor_driver.cpp               # Xuất PWM & điều hướng L298N
 │   ├── servo_pwm.cpp                  # Cấu hình LEDC phần cứng cho servo
 │   └── servo1.cpp / servo2.cpp / servo3.cpp
-└── platformio.ini                     # Cấu hình 4 build environments (mặc định esp32-ir)
+└── platformio.ini                     # Cấu hình 2 build environments (mặc định esp32-ir)
 ```
 
 ---
@@ -156,8 +152,6 @@ pio run -t upload
 
 # Hoặc chọn env cụ thể theo phần cứng:
 pio run -e s3-ir -t upload
-pio run -e esp32-photores -t upload
-pio run -e esp32-tcrt5000-2d41 -t upload
 
 # Mở Serial Monitor
 pio device monitor -b 115200
