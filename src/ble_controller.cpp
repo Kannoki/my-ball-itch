@@ -95,10 +95,10 @@ static void handleControllerPacket(const uint8_t* data, size_t len) {
                     runBackward(MOTOR_MANUAL_SPEED);
                     break;
                 case '7': // LEFT - Re trai
-                    runTurnLeft(MOTOR_MANUAL_SPEED);
+                    runTurnLeft(MOTOR_MANUAL_TURN_SPEED);
                     break;
                 case '8': // RIGHT - Re phai
-                    runTurnRight(MOTOR_MANUAL_SPEED);
+                    runTurnRight(MOTOR_MANUAL_TURN_SPEED);
                     break;
                 default:
                     break;
@@ -284,8 +284,12 @@ static void handleUartText(const String& text) {
 
     // Dao tro keo INPUT_PULLUP vs INPUT tren 8 chan sensor: P hoac p
     if (c == 'P' || c == 'p') {
+#ifdef SENSOR_PHOTORESISTOR
+        bleSendLog("PHOTORES ADC: tro keo tat.\n");
+#else
         toggleSensorPullup();
         bleSendLog("SENSOR PULLUP -> " + String(sensorPullupEnabled ? "BAT (INPUT_PULLUP)\n" : "TAT (INPUT)\n"));
+#endif
         return;
     }
 
@@ -298,9 +302,14 @@ static void handleUartText(const String& text) {
 
     // V chi nhac lai luat; khong con nhieu che do do line de doi nham.
     if (c == 'V' || c == 'v') {
-        bleSendLog("DO LINE: trai=re trai, phai=re phai, hai ben=thang.\n");
-#if NUM_SENSORS == 8
+#ifdef SENSOR_PHOTORESISTOR
+        bleSendLog("DO LINE: mep vach re nhe, mat vach xoay tim theo huong cuoi.\n");
+        bleSendLog("Sau giao lo con line thang 200 ms: chay chuoi servo.\n");
+#elif NUM_SENSORS == 8
+        bleSendLog("DO LINE: PD theo tam vach, vach rong di thang.\n");
         bleSendLog("Mat line co moc: lui ve moc va thu di thang. Sau giao lo con line thang 200 ms: chay chuoi servo.\n");
+#else
+        bleSendLog("DO LINE: trai=re trai, phai=re phai, hai ben=thang.\n");
 #endif
         return;
     }
@@ -355,7 +364,11 @@ static void handleUartText(const String& text) {
     // Lenh dao muc logic cam bien: I hoac i
     if (c == 'I' || c == 'i') {
         toggleLineActiveState();
+#ifdef SENSOR_PHOTORESISTOR
+        bleSendLog(lineActiveState == HIGH ? "Vach den: ADC >= nguong\n" : "Vach den: ADC < nguong\n");
+#else
         bleSendLog("LINE_ACTIVE_STATE -> " + String((lineActiveState == HIGH) ? "HIGH (Vach den = 1)\n" : "LOW (Vach den = 0)\n"));
+#endif
         return;
     }
 
@@ -371,11 +384,11 @@ static void handleUartText(const String& text) {
                 bleSendLog("Moving Backward\n");
                 break;
             case 'L': case 'l':
-                runTurnLeft(MOTOR_MANUAL_SPEED);
+                runTurnLeft(MOTOR_MANUAL_TURN_SPEED);
                 bleSendLog("Turning Left\n");
                 break;
             case 'R': case 'r':
-                runTurnRight(MOTOR_MANUAL_SPEED);
+                runTurnRight(MOTOR_MANUAL_TURN_SPEED);
                 bleSendLog("Turning Right\n");
                 break;
             case 'S': case 's':

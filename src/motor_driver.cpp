@@ -1,4 +1,7 @@
 #include "motor_driver.h"
+#ifdef SENSOR_PHOTORESISTOR
+#include "wheel_encoders.h"
+#endif
 #include <esp_arduino_version.h>
 #include <mutex>
 
@@ -92,6 +95,9 @@ struct MotorChannel {
     unsigned long boostStartedAt;
     unsigned long lastRampAt;
 
+    // San PWM toi thieu ap sau khi nhan he so cong suat (xem motorOutputDuty).
+    int pwmFloor;
+
     // Thoi gian chan ENA/ENB o muc HIGH trong khi ta phai giu LOW (phat hien jumper)
     unsigned long enableHighSince;
 };
@@ -99,12 +105,32 @@ struct MotorChannel {
 // Kenh vat ly: B = OUT3/OUT4 (trai mac dinh), A = OUT1/OUT2 (phai mac dinh)
 static MotorChannel channelB{
     PIN_MOTOR_LEFT_IN3, PIN_MOTOR_LEFT_IN4, PIN_MOTOR_LEFT_ENB, PWM_CH_LEFT,
-    100, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
+    100, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0
 };
 static MotorChannel channelA{
     PIN_MOTOR_RIGHT_IN1, PIN_MOTOR_RIGHT_IN2, PIN_MOTOR_RIGHT_ENA, PWM_CH_RIGHT,
-    100, 0, 0, 0, 0, 0, 0, false, 0, 0, 0
+    100, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0
 };
+
+#ifdef SENSOR_PHOTORESISTOR
+static bool countingJunctionCoast = false;
+static unsigned long junctionCoastStartedAt = 0;
+
+static void updateWheelEncoderDirections(unsigned long now) {
+    if (!wheelEncodersReady()) return;
+    if (countingJunctionCoast && now - junctionCoastStartedAt < MOTOR_RAMP_MS) return;
+    countingJunctionCoast = false;
+    const MotorChannel& left = runtimeConfig.swapLeftRight ? channelA : channelB;
+    const MotorChannel& right = runtimeConfig.swapLeftRight ? channelB : channelA;
+    // Lay dau theo LENH (commandedDirection) chu khong phai duty da ap dung.
+    // Duty cham (do ramp) nen trong ~150 ms dau tien cua moi lan doi huong,
+    // xung encoder se bi gan sai dau -> odometry lech. Lenh co dung ngay.
+    const int leftDirection = left.commandedDirection;
+    const int rightDirection = right.commandedDirection;
+    setWheelEncoderDirections(runtimeConfig.invertLeft ? -leftDirection : leftDirection,
+                              runtimeConfig.invertRight ? -rightDirection : rightDirection);
+}
+#endif
 
 // Lenh BLE chay tren task khac voi vong lap cap nhat PWM.
 static std::mutex motorMutex;
@@ -114,6 +140,19 @@ static std::mutex motorMutex;
 // ------------------------------------------------------------------------------
 static int motorOutputDuty(const MotorChannel& motor, int duty) {
     return (constrain(duty, 0, 255) * motor.outputPercent) / 100;
+}
+
+// San PWM toi thieu phai duoc dam bao SAU khi nhan he so 88%/92%.
+// San duoc ap o TANG LENH (updateMotorChannel) chu khong ap o day, vi day la
+// noi ghi duty ramp - ap san o day se lam bay hanh "nhay" len san va pha vo
+// nhip de-pa. Cong thuc: duty truoc he so >= ceil(san / he so).
+//   Di thang : 687 -> 175 -> x88% = 154/255 (khong doi)
+//   Banh trong khi re: lenh 165 -> 175 -> x92% = 161/255 (>= san)
+static int minimumDutyBeforeScaling(const MotorChannel& motor) {
+    const int floorDuty = motor.pwmFloor;
+    if (floorDuty <= 0) return 0;
+    const int percent = motor.outputPercent > 0 ? motor.outputPercent : 100;
+    return (floorDuty * 100 + percent - 1) / percent;
 }
 
 static void writeMotorPwm(const MotorChannel& motor, int duty) {
@@ -176,6 +215,7 @@ void motorDriverInit() {
         motor.boosting = false;
         motor.boostStartedAt = 0;
         motor.lastRampAt = millis();
+        motor.pwmFloor = 0;
         motor.enableHighSince = 0;
     };
     resetChannel(channelA);
@@ -299,6 +339,9 @@ bool motorDriverUpdate() {
 
     rampMotorChannel(channelA, now);
     rampMotorChannel(channelB, now);
+#ifdef SENSOR_PHOTORESISTOR
+    updateWheelEncoderDirections(now);
+#endif
 
     checkEnableJumper(channelA, PIN_MOTOR_RIGHT_ENA, jumperWarned);
     checkEnableJumper(channelB, PIN_MOTOR_LEFT_ENB, jumperWarned);
@@ -342,6 +385,14 @@ static void updateMotorChannel(MotorChannel& motor, int speed, bool invert,
     // Ngoai dai co truot: luon chay o duty nho nhat da biet la chay duoc
     if (duty < minPwm) duty = minPwm;
 
+    // San PWM sau khi nhan he so cong suat: dam bao duty XUAT RA khong bao gio
+    // nho hon MOTOR_MIN_PWM_*. Cong thuc dung san truoc khi nhan he so nen
+    // gia tri "truoc he so" phai duoc lam tron len.
+    const int minimumBeforeScaling = minimumDutyBeforeScaling(motor);
+    if (minimumBeforeScaling > 0 && duty < minimumBeforeScaling) {
+        duty = minimumBeforeScaling;
+    }
+
     // Bat dau nhip de-pa khi chuyen tu DUNG sang CHAY.
     // Viec ket thuc nhip de-pa do rampMotorChannel lo (de dam bao rampAccum
     // duoc dong bo voi duty thuc te).
@@ -370,9 +421,16 @@ void runLR(int vL, int vR, int powerPercent) {
     MotorChannel* leftChannel = runtimeConfig.swapLeftRight ? &channelA : &channelB;
     MotorChannel* rightChannel = runtimeConfig.swapLeftRight ? &channelB : &channelA;
 
+    // San PWM toi thieu cho tung ben (ap sau khi nhan he so cong suat).
+    leftChannel->pwmFloor = runtimeConfig.minPwmLeft;
+    rightChannel->pwmFloor = runtimeConfig.minPwmRight;
+
     // Lenh dung giu nguyen ty le cu trong luc giam PWM, tranh tang cong suat khi dang dung.
-    if (vL != 0) leftChannel->outputPercent = constrain(powerPercent, 0, 100);
-    if (vR != 0) rightChannel->outputPercent = constrain(powerPercent, 0, 100);
+    const int outputPercent = constrain(powerPercent, 0, 100);
+    const bool leftPowerChanged = vL != 0 && leftChannel->outputPercent != outputPercent;
+    const bool rightPowerChanged = vR != 0 && rightChannel->outputPercent != outputPercent;
+    if (leftPowerChanged) leftChannel->outputPercent = outputPercent;
+    if (rightPowerChanged) rightChannel->outputPercent = outputPercent;
 
     updateMotorChannel(*leftChannel, vL, runtimeConfig.invertLeft,
                         runtimeConfig.deadbandLeft, runtimeConfig.minPwmLeft, now);
@@ -382,6 +440,14 @@ void runLR(int vL, int vR, int powerPercent) {
     // Ramp ngay neu vua lenh (neu chay o che do do line, motorDriverUpdate se lo phan ramp)
     rampMotorChannel(channelB, now);
     rampMotorChannel(channelA, now);
+
+    // Cap nhat PWM khi doi he so, ke ca luc duty noi bo da o muc dich.
+    if (leftPowerChanged) writeMotorPwm(*leftChannel, leftChannel->appliedDuty);
+    if (rightPowerChanged) writeMotorPwm(*rightChannel, rightChannel->appliedDuty);
+#ifdef SENSOR_PHOTORESISTOR
+    if (vL != 0 || vR != 0) countingJunctionCoast = false;
+    updateWheelEncoderDirections(now);
+#endif
 }
 
 void runForward(int speed) {
@@ -418,6 +484,30 @@ void runArcRight(int speed) {
 void stopMotion() {
     runLR(0, 0);
 }
+
+#ifdef SENSOR_PHOTORESISTOR
+void coastMotionAtJunction() {
+    const std::lock_guard<std::mutex> lock(motorMutex);
+    const unsigned long now = millis();
+    countingJunctionCoast = wheelEncodersReady();
+    junctionCoastStartedAt = now;
+
+    const auto coast = [now](MotorChannel& motor) {
+        motor.commandedSpeed = 0;
+        motor.commandedDirection = 0;
+        motor.targetDuty = 0;
+        motor.appliedDuty = 0;
+        motor.rampAccum = 0;
+        motor.boosting = false;
+        motor.lastRampAt = now;
+        writeMotorPwm(motor, 0);
+        writeDirectionPins(motor, 0);
+        motor.electricalDirection = 0;
+    };
+    coast(channelA);
+    coast(channelB);
+}
+#endif
 
 // ------------------------------------------------------------------------------
 // WRAPPER CU (van toc do don vi PWM 0-255 nhu truoc)

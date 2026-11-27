@@ -282,7 +282,7 @@ L298N có tổn thất điện áp khoảng **1,4–2 V** trên cầu H-bridge. 
 duty dưới khoảng **165/255 (65 %)** thường **không kéo được** động cơ.
 
 Cách xử lý:
-1. Firmware có **nhịp đề-pa** cấu hình `245/255` trong `120 ms`. Dò line tự động áp dụng thêm `MOTOR_OUTPUT_PERCENT` (hiện 88%); điều khiển tay giữ 100%. Nếu xe không chạy, kiểm tra nguồn và PWM thực tế cần cho tải.
+1. Firmware có **nhịp đề-pa** cấu hình `245/255` trong `120 ms`. Dò line tự động áp dụng thêm hệ số 88% khi hai bên chạy đều và 92% khi rẽ. Điều khiển tay dùng hệ số 100%. Nếu xe không chạy, kiểm tra nguồn và PWM thực tế cần cho tải.
 2. Tăng duty tối thiểu qua BLE: `XM 180 180` (rồi chép giá trị này vào `config.h`).
 3. Kiểm tra 2 động cơ cùng bên **có được đấu song song đúng cực** (2 dây đỏ vào một cọc, 2 dây đen vào cọc kia).
    Nếu 1 động cơ đấu ngược cực với động cơ kia, chúng **triệt tiêu nhau** và bên đó không quay.

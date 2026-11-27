@@ -5,7 +5,7 @@ The line tracking regression test uses a host clock and mock GPIO, motors,
 and servos. After a PlatformIO build has created .pio/build, run from the
 project root with a host C++ compiler:
 
-    g++ -std=c++11 -Itest/host -Iinclude src/line_sensor.cpp src/line_tracking.cpp test/host/line_tracking_test.cpp -o .pio/build/line_tracking_test.exe
+    g++ -std=c++11 -Itest/host -Iinclude src/line_sensor.cpp src/line_tracking.cpp src/motor_steering.cpp src/junction_detect.cpp src/speed_pid.cpp src/wheel_odometry.cpp test/host/line_tracking_test.cpp -o .pio/build/line_tracking_test.exe
     ./.pio/build/line_tracking_test.exe
 
 Add the board and sensor defines from platformio.ini to test another build

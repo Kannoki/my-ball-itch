@@ -55,7 +55,7 @@ bool motorDriverUpdate();
  * @param vL Van toc do ben trai (-1000 den +1000, so am la chay lui)
  * @param vR Van toc do ben phai (-1000 den +1000, so am la chay lui)
  * @param powerPercent Phan tram PWM dau ra; mac dinh 100 cho lenh tay.
- *                     Chi do line tu dong truyen MOTOR_OUTPUT_PERCENT.
+ *                     Do line tu dong truyen he so PWM theo lenh di thang hoac re.
  */
 void runLR(int vL, int vR, int powerPercent = 100);
 
@@ -89,6 +89,11 @@ void runArcRight(int speed);
  * @brief Dung toan bo dong co (duty = 0, tha chan huong)
  */
 void stopMotion();
+
+#ifdef SENSOR_PHOTORESISTOR
+// Cat PWM ngay tai moc encoder, van ghi nhan xung theo chieu cu trong luc xe troi.
+void coastMotionAtJunction();
+#endif
 
 // ==============================================================================
 // WRAPPER CU (giu de ma cu khong bi hong)

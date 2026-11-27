@@ -7,10 +7,39 @@
 #include "servo2.h"
 #include "servo3.h"
 #include "ble_controller.h"
+#ifdef SENSOR_PHOTORESISTOR
+#include "motor_steering.h"
+#include "wheel_encoders.h"
+#endif
 
 static unsigned long lastDebugTime = 0;
 
+#ifdef SENSOR_PHOTORESISTOR
+static void printWheelOdometry() {
+    if (!wheelEncodersReady()) return;
+
+    const WheelEncoderCounts counts = getWheelEncoderCounts();
+    const float yaw = getWheelOdometryGeometry().yawDegrees(counts.difference());
+    char bearing[16] = "--";
+    float position;
+    if (getLinePosition(readRawSensors(), position)) {
+        snprintf(bearing, sizeof(bearing), "%+.1f", lineBearingDegrees(-position * SENSOR_PITCH_MM,
+                                                                        LINE_SENSOR_FORWARD_MM));
+    }
+    Serial.printf("[Encoder] YAW=%+.1f deg LINE_ANGLE=%s deg PULSES_L=%ld PULSES_R=%ld\n",
+                  yaw, bearing, static_cast<long>(counts.left), static_cast<long>(counts.right));
+}
+#endif
+
 void setup() {
+    // GPIO 2 la chan strapping: phai LOW hoac floating luc RESET. Servo 3 dung
+    // chan nay, nen firmware nap lai ma KHONG ngat nguon co the de GPIO 2 o muc
+    // HIGH -> ESP32 refuse boot vao bootloader.
+    // Bien an toan: ep GPIO 2 LOW ngay trong setup(), truoc moi thao tac nao.
+    // LUU Y: van phai NGAT NGUON (power-cycle) truoc khi nap lai firmware.
+    pinMode(PIN_SERVO_3, OUTPUT);
+    digitalWrite(PIN_SERVO_3, LOW);
+
     Serial.begin(115200);
     delay(1000); // Cho on dinh nguon va ket noi Serial USB
 
@@ -21,6 +50,9 @@ void setup() {
 
     // 1. Khoi tao phan cung dong co L298N
     motorDriverInit();
+#ifdef SENSOR_PHOTORESISTOR
+    wheelEncodersInit();
+#endif
 
     // 2. Khoi tao 8 mat cam bien do line
     lineSensorInit();
@@ -70,5 +102,8 @@ void loop() {
     if (now - lastDebugTime >= 500) {
         lastDebugTime = now;
         printSensorDebug();
+#ifdef SENSOR_PHOTORESISTOR
+        printWheelOdometry();
+#endif
     }
 }
